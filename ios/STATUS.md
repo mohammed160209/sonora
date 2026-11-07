@@ -1,6 +1,6 @@
 # iPhone port status
 
-Development beta, updated 30 October 2026. Latest accepted development IPA: build 24 (source 305dd0c5). All 12 targeted iPhone 13/iOS 27 interaction cases and all 13 offline asset checks passed. Two artwork dismissals recorded 42 frames over about 0.65 seconds each, with matching release/mini-player bounds. The offline badge now uses the measured time-label/play-button gap. Historical records below retain earlier results and limitations; see the final build-24 section for delivery details.
+Development beta, updated 7 November 2026. Build 25 is the latest verified iPhone IPA. It was built with the iOS 27.2 SDK, and all 12 interaction checks passed on the iPhone 13 simulator with iOS 27.2. Artist Play and Shuffle include tracks from YouTube Music releases. Unchanged lyrics rows skip redraws.
 
 ## Verified
 
@@ -837,3 +837,9 @@ Public UIKit completionSpeed/duration documentation informed the speed normaliza
 Source 305dd0c5d7b793dc0f58ee533bf5ee55e4942ef1; successful run https://github.com/icesaviour02-droid/sonora/actions/runs/41062387380. Both native targets compiled. All 12 targeted cases passed on iPhone 13/iOS 27.0 (24A434), with no runtime warnings. Both completed pull gestures recorded 42 display-link samples: 0.649s and 0.648s after release, with a planned 0.64s settle. Their initial positions/widths match the released cover, and final bounds match the mini-player within one point. Canceled pulls, reopening and restored real-image alpha passed. The rendered offline badge was horizontally centered and above the play/pause control; the code resolves its vertical midpoint from actual time-label and transport-button anchors. All prior queue/history/collection/seeking/lyrics interactions and all 13 permanent offline asset flags passed again, including real cover decoding after a cold offline launch. No appearance screenshots were exported/reviewed and no iOS 26 tests ran.
 
 Delivered ios/build/LATEST-VERSION/Sonora-0.3.0-build24-305dd0c5.ipa; 8,748,843 bytes; SHA256 ff623238aa4e697756af77568fdd1beab2ced92a91fd4587a08d8a7286d7cf0c. ZIP integrity, version, arm64 iPhoneOS Mach-O, absence of test bundles and final copied-file hash passed. Unsigned for iLoader. BUILD-INFO.json, README.txt, VALIDATION.md and CHECKS/ios27-build24-*.json describe the exact accepted archive. Previous IPA files remain untouched; build 23 notes are preserved in Previous-Versions. Exact Apple Music motion/appearance, perceived hardware smoothness and other existing phone/provider/account parity limits still require review.
+
+## Build 25 on the transferred fork
+
+The iPhone build now runs on mohammed160209/sonora with Xcode 27.2. The run at https://github.com/mohammed160209/sonora/actions/runs/42389943451 passed all 12 interaction and 13 offline asset checks on iOS 27.2 (24B8117). All 56 Linux core tests passed. A live Linux check returned 287 distinct, playable catalog entries for an artist with five top songs. Catalog coverage depends on what YouTube Music supplies and which releases can be read within the request deadline.
+
+The IPA is ios/build/LATEST-VERSION/Sonora-0.3.0-build25-648fc888.ipa. SHA-256 is 15650c87194ebfd18ab3b1e34fbc79f6996eeb6de4e12c2c7979cf2fa0594e1d. It is unsigned for iLoader. A physical device check is still needed to confirm whether refreshing the signing profile resolves the reported launch message.

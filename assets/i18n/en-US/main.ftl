@@ -1461,6 +1461,7 @@ ios-artists-empty-description = Artists from your library and subscriptions appe
 ios-top-songs = Top Songs
 ios-singles = Singles & EPs
 ios-similar-artists = Similar Artists
+ios-loading-artist-songs = Loading artist songs…
 ios-albums = Albums
 ios-albums-empty-description = Albums you save on YouTube Music appear here.
 ios-songs = Songs

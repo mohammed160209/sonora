@@ -74,7 +74,7 @@ struct LyricsContentView: View {
                                 if !playback.isPlaying { playback.resume() }
                             }
                         } label: {
-                            LyricsLineView(line: line, active: line.id == active)
+                            LyricsLineView(line: line, active: line.id == active).equatable()
                         }
                         .buttonStyle(.plain).id(line.id)
                     }
@@ -160,11 +160,15 @@ private struct LyricsSourceToolbar: View {
     }
 }
 
-private struct LyricsLineView: View {
+private struct LyricsLineView: View, Equatable {
     @Environment(SettingsStore.self) private var settings
     let line: LyricsLineItem
     let active: Bool
     private var counter: Bool { line.voice == "counter" }
+
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.active == rhs.active && lhs.line == rhs.line
+    }
 
     var body: some View {
         VStack(alignment: counter ? .trailing : .leading, spacing: Layout.compact / 2) {

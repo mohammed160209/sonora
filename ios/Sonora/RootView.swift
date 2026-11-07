@@ -1641,6 +1641,7 @@ struct PlaylistDetailView: View {
 struct ArtistDetailView: View {
     @Environment(PlaybackController.self) private var playback
     @Environment(SettingsStore.self) private var settings
+    @Environment(DownloadsStore.self) private var downloads
 
     let browseID: String
     let fallbackName: String
@@ -1649,6 +1650,7 @@ struct ArtistDetailView: View {
     @State private var detail: NativeProvider.ArtistDetailPayload?
     @State private var isLoading = true
     @State private var error: String?
+    @State private var catalogRequest: Bool?
 
     private var topSongs: [MusicTrack] {
         detail?.top_songs.map(\.track) ?? []
@@ -1683,13 +1685,12 @@ struct ArtistDetailView: View {
                             .foregroundStyle(.secondary)
                     }
                     CollectionPlayShuffleHeader(
-                        playAction: {
-                            if let first = topSongs.first { playback.play(first, in: topSongs) }
-                        },
-                        shuffleAction: { playback.playShuffled(topSongs) }
+                        playAction: { catalogRequest = false },
+                        shuffleAction: { catalogRequest = true }
                     )
-                    .disabled(topSongs.isEmpty)
+                    .disabled(detail == nil || catalogRequest != nil)
                     .padding(.horizontal, Layout.spacing)
+                    if catalogRequest != nil { ProgressView("ios-loading-artist-songs") }
                 }
                 .frame(maxWidth: .infinity)
 
@@ -1770,6 +1771,25 @@ struct ArtistDetailView: View {
                 self.error = (error as? ProviderError)?.errorDescription ?? String(localized: "ios-provider-error")
                 isLoading = false
             }
+        }
+        .task(id: catalogRequest) {
+            guard let shuffled = catalogRequest else { return }
+            defer { catalogRequest = nil }
+            let startingTrack = playback.currentQueueID
+            let name = detail?.name ?? fallbackName
+            let catalog: [MusicTrack] = if downloads.isOffline { [] } else {
+                (try? await NativeProvider.artistTracks(browseID: browseID)) ?? []
+            }
+            guard !Task.isCancelled, playback.currentQueueID == startingTrack else { return }
+            let songs = (catalog.isEmpty ? topSongs : catalog).filter {
+                $0.available != false && (!downloads.isOffline || downloads.fileURL(for: $0.id) != nil)
+            }
+            guard let first = songs.first else {
+                playback.error = downloads.isOffline ? String(localized: "ios-offline-required") : String(localized: "ios-provider-error")
+                return
+            }
+            if shuffled { playback.playShuffled(songs, source: name) }
+            else { playback.play(first, in: songs, source: name) }
         }
     }
 

@@ -339,12 +339,15 @@ def review_functionality(udid, container):
 if __name__ == "__main__":
     OUTPUT.mkdir(parents=True, exist_ok=True)
     runtimes = json.loads(sim("list", "runtimes", "--json"))["runtimes"]
-    available = [r for r in runtimes if r.get("isAvailable") and r["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS-") and int(r["version"].split(".")[0]) == 27]
+    target_version = os.environ.get("SONORA_REVIEW_IOS_VERSION", "27.2")
+    available = [r for r in runtimes if r.get("isAvailable")
+                 and r["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS-")
+                 and (r["version"] == target_version or r["version"].startswith(target_version + "."))]
     device_type = "com.apple.CoreSimulator.SimDeviceType.iPhone-13"
     available = [r for r in available if not r.get("supportedDeviceTypes") or any(
         device.get("identifier") == device_type for device in r["supportedDeviceTypes"])]
     if not available:
-        raise RuntimeError("No available iOS 27 simulator runtime on this runner")
+        raise RuntimeError(f"No available iPhone 13 simulator runtime for iOS {target_version} on this runner")
     runtime = sorted(available, key=lambda r: tuple(map(int, r["version"].split("."))))[-1]
     (OUTPUT / "selected-runtime.json").write_text(json.dumps(runtime, indent=2))
     udid = sim("create", "Sonora iPhone 13 Review", device_type, runtime["identifier"])

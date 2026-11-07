@@ -9,6 +9,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Play and Shuffle on iPhone artist pages queue songs from the artist’s YouTube Music releases as well as their top songs.
+
 - iPhone downloads preserve full-quality provider artwork and available timed lyrics beside the audio. Missing files for existing downloads backfill automatically, with a manual repair action in Downloads and Settings.
 - iPhone Offline Mode pauses network requests and transfers, plays saved/imported music, searches downloads and skips unavailable queue entries. It activates automatically when connectivity is lost.
 
@@ -49,6 +51,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Account playback compatibility is still under verification.
 
 ### Fixed
+
+- The iPhone lyrics player skips redrawing unchanged rows as the song advances.
 
 - Player artwork settles into the mini-player over the remaining dismissal motion, with a curved path and gradual resizing instead of a fast final jump. The Available offline badge centers between the visible time labels and play/pause button.
 

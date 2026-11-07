@@ -1,7 +1,7 @@
 # Sonora for iPhone — development beta
 
 Native SwiftUI iPhone port using the desktop-pinned Rust YouTube client. Requires iOS 26+.
-The intended device is an iPhone 13 running iOS 27.
+The compatibility review runs on an iPhone 13 simulator with iOS 27.2.
 
 ## Implemented
 
@@ -20,7 +20,7 @@ other providers, scrobbling and equalizer remain unfinished.
 
 ## Build from Linux using GitHub's Mac runner
 
-The fork is https://github.com/icesaviour02-droid/sonora. The **iPhone IPA** workflow builds the
+The fork is https://github.com/mohammed160209/sonora. The **iPhone IPA** workflow builds the
 native libraries, device app and simulator app. Download **Sonora-iPhone-unsigned**, extract the
 IPA, then sign/install it with iLoader. No Apple certificate or account credential is stored here.
 The separate simulator-review artifact contains screenshots and optional live-download evidence,

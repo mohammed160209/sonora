@@ -81,10 +81,18 @@ jobs:
     env:
       RUSTUP_TOOLCHAIN: stable
       IPHONEOS_DEPLOYMENT_TARGET: '26.0'
+      SONORA_REVIEW_IOS_VERSION: '27.2'
       SONORA_SMOKE_VIDEO_ID: ${{ vars.SONORA_SMOKE_VIDEO_ID }}
       SONORA_REVIEW_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.review_scope || 'build_only' }}
     steps:
       - uses: actions/checkout@v5
+      - name: Select Xcode 27.2
+        run: |
+          xcode_path=/Applications/Xcode_27.2.app/Contents/Developer
+          test -d "$xcode_path"
+          echo "DEVELOPER_DIR=$xcode_path" >> "$GITHUB_ENV"
+          DEVELOPER_DIR="$xcode_path" xcodebuild -version
+          test "$(DEVELOPER_DIR="$xcode_path" xcrun --sdk iphoneos --show-sdk-version)" = 27.2
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim
@@ -122,7 +130,7 @@ jobs:
           xcodebuild -project ios/Sonora.xcodeproj -scheme Sonora \
             -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath ios/build/simulator ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build-for-testing
-      - name: Run explicitly selected iPhone 13 iOS 27 checks
+      - name: Run explicitly selected iPhone 13 iOS 27.2 checks
         if: env.SONORA_REVIEW_SCOPE != 'build_only'
         run: python3 ios/scripts/simulator_smoke.py
       - name: Upload unsigned IPA after simulator acceptance

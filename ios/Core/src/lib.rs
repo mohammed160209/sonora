@@ -48,6 +48,8 @@ use tokio::runtime::{Builder, Runtime};
 use ytmusic::{Client, Minter, YtMusic, nav::Nav as _, parse::find_renderers};
 
 const DEADLINE: Duration = Duration::from_secs(30);
+const ARTIST_CATALOG_DEADLINE: Duration = Duration::from_secs(24);
+const ARTIST_ALBUM_CONCURRENCY: usize = 4;
 const MAX_QUERY: usize = 512;
 const ACCOUNT_LIMIT: usize = 8;
 const POTOKEN_KEEP: Duration = Duration::from_secs(6 * 60 * 60);
@@ -277,6 +279,9 @@ enum Request {
         browse_id: String,
     },
     Artist {
+        browse_id: String,
+    },
+    ArtistTracks {
         browse_id: String,
     },
     Playlist {
@@ -665,6 +670,7 @@ async fn execute(request: Request) -> Result<Value> {
         Request::Genre { params } => fetch_genre(&api, &params).await,
         Request::Album { browse_id } => fetch_album(&api, &browse_id).await,
         Request::Artist { browse_id } => fetch_artist(&api, &browse_id).await,
+        Request::ArtistTracks { browse_id } => fetch_artist_tracks(&api, &browse_id).await,
         Request::Playlist { playlist_id } => fetch_playlist(&api, &playlist_id).await,
         Request::Radio { video_id } => {
             validate_video_id(&video_id)?;
@@ -1067,6 +1073,70 @@ async fn fetch_artist(api: &Arc<YtMusic>, browse_id: &str) -> Result<Value> {
         "singles": singles,
         "related": [],
     }))
+}
+
+/// Queue the artist's ranked songs followed by their releases, with bounded parallel album reads.
+async fn fetch_artist_tracks(api: &Arc<YtMusic>, browse_id: &str) -> Result<Value> {
+    let deadline = tokio::time::Instant::now() + ARTIST_CATALOG_DEADLINE;
+    let (artist, discography) = tokio::join!(
+        api.artist(browse_id),
+        tokio::time::timeout(Duration::from_secs(8), api.discography(browse_id)),
+    );
+    let artist = artist?;
+    let artist_id = artist.browse_id.as_str();
+    let mut tracks = artist.top_tracks;
+    let mut releases = discography.ok().and_then(Result::ok).unwrap_or_default();
+    releases.extend(artist.albums);
+    releases.extend(artist.singles);
+    releases.sort_by_key(|album| std::cmp::Reverse(album.year));
+    let mut seen_releases = HashSet::new();
+    let mut release_ids = releases
+        .into_iter()
+        .filter_map(|album| {
+            seen_releases
+                .insert(album.browse_id.clone())
+                .then_some(album.browse_id)
+        })
+        .enumerate();
+    let mut reads = tokio::task::JoinSet::new();
+    let mut completed = Vec::new();
+    loop {
+        for (order, id) in release_ids
+            .by_ref()
+            .take(ARTIST_ALBUM_CONCURRENCY - reads.len())
+        {
+            let api = Arc::clone(api);
+            reads.spawn(async move { (order, api.album(&id).await) });
+        }
+        match tokio::time::timeout_at(deadline, reads.join_next()).await {
+            Ok(Some(Ok((order, Ok(album))))) => completed.push((order, album.tracks)),
+            Ok(Some(_)) => continue,
+            Ok(None) | Err(_) => break,
+        }
+    }
+    drop(reads);
+    completed.sort_by_key(|(order, _)| *order);
+    tracks.extend(completed.into_iter().flat_map(|(_, tracks)| tracks));
+    let mut seen_tracks = HashSet::new();
+    Ok(Value::Array(
+        tracks
+            .into_iter()
+            .filter(|track| {
+                let mut credits = track
+                    .artists
+                    .iter()
+                    .filter_map(|artist| artist.id.as_deref())
+                    .peekable();
+                track.available
+                    && (credits.peek().is_none() || credits.any(|id| id == artist_id))
+                    && track
+                        .video_id
+                        .as_ref()
+                        .is_some_and(|id| seen_tracks.insert(id.clone()))
+            })
+            .filter_map(serialize_track)
+            .collect(),
+    ))
 }
 
 async fn fetch_playlist(api: &Arc<YtMusic>, playlist_id: &str) -> Result<Value> {

@@ -155,6 +155,7 @@
 "ios-liked-songs" = "Liked Songs";
 "ios-list" = "List";
 "ios-listenbrainz-token" = "ListenBrainz User Token";
+"ios-loading-artist-songs" = "Loading artist songs…";
 "ios-loading-home" = "Loading recommendations…";
 "ios-loading-library" = "Opening your library. If it cannot be loaded, try again.";
 "ios-loading-lyrics" = "Loading lyrics…";

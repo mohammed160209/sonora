@@ -420,6 +420,11 @@ enum NativeProvider {
         try await request(["operation": "artist", "browse_id": browseID])
     }
 
+    static func artistTracks(browseID: String) async throws -> [MusicTrack] {
+        let songs: [Song] = try await request(["operation": "artist_tracks", "browse_id": browseID])
+        return songs.map(\.track)
+    }
+
     static func playlist(playlistID: String) async throws -> PlaylistDetailPayload {
         try await request(["operation": "playlist", "playlist_id": playlistID])
     }

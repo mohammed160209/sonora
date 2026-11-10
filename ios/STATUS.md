@@ -1,6 +1,6 @@
 # iPhone port status
 
-Development beta, updated 10 November 2026. Build 26 is the latest verified simulator build. It includes six-digit YouTube Music Listening Sessions, chronological history replay, solid Queue and History previews, more resilient downloads and upstream lyrics improvements.
+Development beta, updated 10 November 2026. Build 27 is the latest verified simulator build. It adds small, medium and large Home Screen playback widgets, trims History when rewinding, and updates player and collection cover motion. [Run 42774049196](https://github.com/mohammed160209/sonora/actions/runs/42774049196) passed all 12 iPhone 13 / iOS 27.2 interaction checks. The IPA includes the arm64 widget extension and transport intents. Widget appearance and controls after iLoader signing still need a physical iPhone check.
 
 Build 26 source `cfc4a7ab` passed all 12 interaction checks on the iPhone 13 simulator with iOS 27.2 (24B8117) in [run 42767363425](https://github.com/mohammed160209/sonora/actions/runs/42767363425). The checks verified history order, selected-row previews, audio validation, and offline artwork and timed lyrics after relaunch. Two protocol clients exercised the official Sessions relay. A live public YouTube Music download decoded completely on Linux. Live transfer and cross-device audio on a physical iPhone, including iOS 27.2.1, still need verification.
 

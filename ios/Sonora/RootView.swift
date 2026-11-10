@@ -144,6 +144,10 @@ struct RootView: View {
     private func open(_ url: URL) {
         guard url.scheme == "sonora",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+        if url.host == "nowplaying" {
+            if playback.current != nil { playerMode = "artwork"; showPlayer = true }
+            return
+        }
         #if DEBUG
         if url.host == "sessionreview" {
             account.reviewSessionStorage()
@@ -342,6 +346,7 @@ struct HomeView: View {
     @Environment(PlaybackController.self) private var playback
     let openSettings: () -> Void
 
+    @Namespace private var coverTransition
     @State private var query = ""
 
     var body: some View {
@@ -424,15 +429,19 @@ struct HomeView: View {
         case .album:
             NavigationLink {
                 AlbumDetailView(browseID: pin.targetID, fallbackTitle: pin.title, fallbackArtist: pin.subtitle, fallbackArtwork: pin.artworkURL)
+                    .collectionCoverTransition(id: "pin:" + pin.id, in: coverTransition)
             } label: {
                 SquareCard(title: pin.title, subtitle: pin.subtitle, artworkURL: pin.artworkURL)
+                    .coverSource(id: "pin:" + pin.id, in: coverTransition)
             }
             .buttonStyle(.plain)
         case .playlist:
             NavigationLink {
                 PlaylistDetailView(playlistID: pin.targetID, fallbackTitle: pin.title, fallbackAuthor: pin.subtitle, fallbackArtwork: pin.artworkURL)
+                    .collectionCoverTransition(id: "pin:" + pin.id, in: coverTransition)
             } label: {
                 SquareCard(title: pin.title, subtitle: pin.subtitle, artworkURL: pin.artworkURL)
+                    .coverSource(id: "pin:" + pin.id, in: coverTransition)
             }
             .buttonStyle(.plain)
         case .artist:
@@ -495,15 +504,19 @@ struct HomeView: View {
         } else if let album = item.album {
             NavigationLink {
                 AlbumDetailView(browseID: album.id, fallbackTitle: album.title, fallbackArtist: album.artist, fallbackArtwork: album.artworkURL)
+                    .collectionCoverTransition(id: section.id + ":" + item.id, in: coverTransition)
             } label: {
                 SquareCard(title: item.title, subtitle: item.subtitle, artworkURL: item.artworkURL)
+                    .coverSource(id: section.id + ":" + item.id, in: coverTransition)
             }
             .buttonStyle(.plain)
         } else if let playlist = item.playlist {
             NavigationLink {
                 PlaylistDetailView(playlistID: playlist.id, fallbackTitle: playlist.title, fallbackAuthor: playlist.author, fallbackArtwork: playlist.artworkURL)
+                    .collectionCoverTransition(id: section.id + ":" + item.id, in: coverTransition)
             } label: {
                 SquareCard(title: item.title, subtitle: item.subtitle, artworkURL: item.artworkURL)
+                    .coverSource(id: section.id + ":" + item.id, in: coverTransition)
             }
             .buttonStyle(.plain)
         } else if let artist = item.artist {
@@ -1828,6 +1841,7 @@ struct ArtistDetailView: View {
 struct GenreDetailView: View {
     @Environment(PlaybackController.self) private var playback
     let genre: GenreCategory
+    @Namespace private var coverTransition
     @State private var sections: [HomeShelfSection] = []
     @State private var isLoading = true
     @State private var error: String?
@@ -1858,9 +1872,10 @@ struct GenreDetailView: View {
                                                     fallbackTitle: playlist.title,
                                                     fallbackAuthor: playlist.author,
                                                     fallbackArtwork: playlist.artworkURL
-                                                )
+                                                ).collectionCoverTransition(id: section.id + ":" + item.id, in: coverTransition)
                                             } label: {
                                                 SquareCard(title: item.title, subtitle: item.subtitle, artworkURL: item.artworkURL)
+                                                .coverSource(id: section.id + ":" + item.id, in: coverTransition)
                                             }
                                             .buttonStyle(.plain)
                                         } else if let album = item.album {
@@ -1870,9 +1885,10 @@ struct GenreDetailView: View {
                                                     fallbackTitle: album.title,
                                                     fallbackArtist: album.artist,
                                                     fallbackArtwork: album.artworkURL
-                                                )
+                                                ).collectionCoverTransition(id: section.id + ":" + item.id, in: coverTransition)
                                             } label: {
                                                 SquareCard(title: item.title, subtitle: item.subtitle, artworkURL: item.artworkURL)
+                                                .coverSource(id: section.id + ":" + item.id, in: coverTransition)
                                             }
                                             .buttonStyle(.plain)
                                         } else if let track = item.track {
@@ -1912,6 +1928,7 @@ struct SearchView: View {
     @Environment(PlaybackController.self) private var playback
     @Environment(YouTubeSearch.self) private var youtube
     @Environment(CatalogStore.self) private var catalog
+    @Namespace private var coverTransition
     @State private var filter = Filter.all
 
     var body: some View {
@@ -2035,7 +2052,7 @@ struct SearchView: View {
                                     fallbackTitle: album.title,
                                     fallbackArtist: album.artist,
                                     fallbackArtwork: album.artworkURL
-                                )
+                                ).collectionCoverTransition(id: "album:" + album.id, in: coverTransition)
                             } label: {
                                 HStack(spacing: Layout.spacing) {
                                     ArtworkImage(url: album.artworkURL) { image in
@@ -2048,6 +2065,7 @@ struct SearchView: View {
                                     }
                                     .frame(width: 48, height: 48)
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .collectionCoverSource(CollectionArtworkSource(id: "album:" + album.id, namespace: coverTransition))
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(album.title).appFont(.body, weight: .medium).lineLimit(1)
                                         Text(album.artist).appFont(.subheadline).foregroundStyle(.secondary).lineLimit(1)
@@ -2089,7 +2107,7 @@ struct SearchView: View {
                                     fallbackTitle: playlist.title,
                                     fallbackAuthor: playlist.author,
                                     fallbackArtwork: playlist.artworkURL
-                                )
+                                ).collectionCoverTransition(id: "playlist:" + playlist.id, in: coverTransition)
                             } label: {
                                 HStack(spacing: Layout.spacing) {
                                     ArtworkImage(url: playlist.artworkURL) { image in
@@ -2102,6 +2120,7 @@ struct SearchView: View {
                                     }
                                     .frame(width: 48, height: 48)
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .collectionCoverSource(CollectionArtworkSource(id: "playlist:" + playlist.id, namespace: coverTransition))
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(playlist.title).appFont(.body, weight: .medium).lineLimit(1)
                                         Text(playlist.author).appFont(.subheadline).foregroundStyle(.secondary).lineLimit(1)

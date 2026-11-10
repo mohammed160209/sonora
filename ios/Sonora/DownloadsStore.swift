@@ -285,6 +285,9 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
         pump()
     }
 
+    /// Wait for existing background transfers and offline files before a cold widget action.
+    func waitForRestoration() async { await restoration?.value }
+
     func resumeQueue() {
         for index in entries.indices {
             if entries[index].lyricsState == .failed { entries[index].lyricsState = .queued }

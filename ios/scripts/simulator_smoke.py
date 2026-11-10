@@ -207,12 +207,14 @@ def review_interactions_only(udid, container):
     assert remainder and replay["upcoming"][-len(remainder):] == remainder
     numbers = [int(track.rsplit("-", 1)[-1]) for track in [replay["selected"], *replay["upcoming"][:-len(remainder)]]]
     assert len(numbers) >= 2 and numbers == sorted(set(numbers)), "History did not replay forward into the existing queue"
+    older = [int(track.rsplit("-", 1)[-1]) for track in replay["history"]]
+    assert older and older == sorted(set(older), reverse=True) and max(older) < numbers[0], "Replayed entries remained in History"
     assert json.loads((OUTPUT / "download-integrity-review.json").read_text())["passed"], "Audio integrity validation failed"
     assert json.loads((OUTPUT / "download-lyrics-review.json").read_text())["passed"], "Downloaded timed lyrics did not persist"
     assert json.loads((OUTPUT / "offline-artwork-restore-review.json").read_text())["passed"], "Offline relaunch did not decode saved artwork"
     handoffs = json.loads((OUTPUT / "player-cover-handoff-review.json").read_text())
     closing = [event for event in handoffs if event["event"] == "handoff" and not event["opening"]]
-    assert closing and all(event["afterRelease"] and event["sharedPanelProgress"] and event["settleDuration"] >= 0.48 for event in closing), "Cover did not share the committed panel settling motion"
+    assert closing and all(event["afterRelease"] and event["sharedPanelProgress"] and event["settleDuration"] >= 0.60 for event in closing), "Cover did not share the committed panel settling motion"
     motions = json.loads((OUTPUT / "player-cover-motion-review.json").read_text())
     settled = [event for event in motions if not event["opening"] and event["completed"]]
     assert len(settled) >= 2, "Missing artwork/empty-space dismissal motion evidence"

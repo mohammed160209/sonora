@@ -27,6 +27,18 @@ def package():
         raise ValueError(f"The app does not contain iPhone 13 arm64 code: {architecture}")
     if not info.get("MinimumOSVersion"):
         raise ValueError("The built app has no minimum iOS version")
+    extension = APP / "PlugIns/SonoraWidgets.appex"
+    with (extension / "Info.plist").open("rb") as source:
+        widget = plistlib.load(source)
+    if (widget["CFBundleIdentifier"] != info["CFBundleIdentifier"] + ".widgets"
+            or widget["CFBundleVersion"] != info["CFBundleVersion"]
+            or widget["CFBundleShortVersionString"] != info["CFBundleShortVersionString"]
+            or widget["CFBundleSupportedPlatforms"] != ["iPhoneOS"]
+            or widget["NSExtension"]["NSExtensionPointIdentifier"] != "com.apple.widgetkit-extension"):
+        raise ValueError("Invalid Sonora widget extension")
+    widget_archs = subprocess.check_output(["lipo", "-archs", str(extension / widget["CFBundleExecutable"])], text=True)
+    if "arm64" not in widget_archs.split():
+        raise ValueError("The widget does not contain iPhone arm64 code")
 
     package_root = BUILD / "package"
     if package_root.exists():
@@ -40,8 +52,9 @@ def package():
     with zipfile.ZipFile(archive) as result:
         if result.testzip() is not None:
             raise ValueError("The IPA archive failed integrity verification")
-        if "Payload/Sonora.app/Info.plist" not in result.namelist():
-            raise ValueError("The IPA does not contain the required Payload app bundle")
+        if not {"Payload/Sonora.app/Info.plist",
+                "Payload/Sonora.app/PlugIns/SonoraWidgets.appex/Info.plist"}.issubset(result.namelist()):
+            raise ValueError("The IPA does not contain the app and widget extension")
     digest = hashlib.sha256()
     with archive.open("rb") as source:
         for chunk in iter(lambda: source.read(1_048_576), b""):
@@ -61,6 +74,7 @@ def package():
         "minimum_ios": info["MinimumOSVersion"],
         "architectures": architecture.split(),
         "platforms": info["CFBundleSupportedPlatforms"],
+        "widget_bundle_id": widget["CFBundleIdentifier"],
         "signing": "Unsigned; the sideloading tool must sign before installation.",
         "validation": "Device bundle and ZIP integrity only. This does not verify app features.",
     }

@@ -4,6 +4,7 @@
 import hashlib
 import json
 from pathlib import Path
+import plistlib
 import re
 import struct
 
@@ -43,8 +44,9 @@ def localization():
     source = (ROOT / "assets/i18n/en-US/main.ftl").read_text()
     strings = dict(re.findall(r"^(ios-[a-z0-9-]+) = (.*)$", source, re.MULTILINE))
     used = set()
-    for path in (IOS / "Sonora").glob("*.swift"):
-        used.update(re.findall(r'"(ios-[a-z0-9-]+)"', path.read_text()))
+    for folder in ("Sonora", "WidgetShared", "Widgets"):
+        for path in (IOS / folder).glob("*.swift"):
+            used.update(re.findall(r'"(ios-[a-z0-9-]+)"', path.read_text()))
     missing = used - strings.keys()
     if missing:
         raise ValueError(f"Missing canonical Fluent strings: {sorted(missing)}")
@@ -108,7 +110,8 @@ def project():
         return key
 
     source_refs, source_builds = [], []
-    for path in sorted((IOS / "Sonora").glob("*.swift")):
+    shared = sorted((IOS / "WidgetShared").glob("*.swift"))
+    for path in sorted((IOS / "Sonora").glob("*.swift")) + shared:
         relative = str(path.relative_to(IOS))
         ref = add(relative, "PBXFileReference", lastKnownFileType="sourcecode.swift", path=relative, sourceTree="SOURCE_ROOT")
         source_refs.append(ref)
@@ -128,7 +131,9 @@ def project():
     sources = add("sources", "PBXSourcesBuildPhase", buildActionMask="2147483647", files=source_builds, runOnlyForDeploymentPostprocessing="0")
     resource_phase = add("resources", "PBXResourcesBuildPhase", buildActionMask="2147483647", files=resources, runOnlyForDeploymentPostprocessing="0")
     frameworks = add("frameworks", "PBXFrameworksBuildPhase", buildActionMask="2147483647", files=[], runOnlyForDeploymentPostprocessing="0")
-    project_configs, target_configs = [], []
+    project_configs, target_configs, widget_configs = [], [], []
+    with (IOS / "Sonora/Info.plist").open("rb") as source:
+        app_info = plistlib.load(source)
     for name in ["Debug", "Release"]:
         project_configs.append(add("project." + name, "XCBuildConfiguration", name=name, buildSettings={
             "SDKROOT": "iphoneos", "IPHONEOS_DEPLOYMENT_TARGET": "26.0",
@@ -144,14 +149,53 @@ def project():
             "TARGETED_DEVICE_FAMILY": "1", "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
             "SUPPORTS_MACCATALYST": "NO", "SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD": "NO",
             "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon", "CODE_SIGNING_ALLOWED": "NO",
+            "CODE_SIGN_ENTITLEMENTS": "Sonora/SharedWidgets.entitlements",
             "LD_RUNPATH_SEARCH_PATHS": ["$(inherited)", "@executable_path/Frameworks"],
             "SWIFT_OBJC_BRIDGING_HEADER": "Sonora/Sonora-Bridging-Header.h",
             "LIBRARY_SEARCH_PATHS": ["$(inherited)", "$(SRCROOT)/build/native/$(PLATFORM_NAME)"],
             "OTHER_LDFLAGS": ["$(inherited)", "-lsonora_mobile_core", "-lc++", "-framework", "Security", "-framework", "SystemConfiguration"],
         }))
+        widget_configs.append(add("widgets." + name, "XCBuildConfiguration", name=name, buildSettings={
+            "PRODUCT_NAME": "SonoraWidgets", "PRODUCT_BUNDLE_IDENTIFIER": "org.sonorahq.iphone.development.widgets",
+            "INFOPLIST_FILE": "Widgets/Info.plist", "GENERATE_INFOPLIST_FILE": "NO",
+            "MARKETING_VERSION": app_info["CFBundleShortVersionString"], "CURRENT_PROJECT_VERSION": app_info["CFBundleVersion"],
+            "TARGETED_DEVICE_FAMILY": "1", "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
+            "APPLICATION_EXTENSION_API_ONLY": "YES", "SKIP_INSTALL": "YES",
+            "CODE_SIGNING_ALLOWED": "NO", "CODE_SIGN_ENTITLEMENTS": "Sonora/SharedWidgets.entitlements",
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS": ["$(inherited)", "SONORA_WIDGET_EXTENSION"],
+            "LD_RUNPATH_SEARCH_PATHS": ["$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks"],
+        }))
     project_list = add("project.configs", "XCConfigurationList", buildConfigurations=project_configs, defaultConfigurationIsVisible="0", defaultConfigurationName="Release")
     target_list = add("target.configs", "XCConfigurationList", buildConfigurations=target_configs, defaultConfigurationIsVisible="0", defaultConfigurationName="Release")
     target = add("target", "PBXNativeTarget", buildConfigurationList=target_list, buildPhases=[sources, frameworks, resource_phase], buildRules=[], dependencies=[], name="Sonora", productName="Sonora", productReference=app, productType="com.apple.product-type.application")
+    widget_refs, widget_builds = [], []
+    for path in sorted((IOS / "Widgets").glob("*.swift")) + shared:
+        relative = str(path.relative_to(IOS))
+        ref = identifier(relative) if path in shared else add(relative, "PBXFileReference",
+            lastKnownFileType="sourcecode.swift", path=relative, sourceTree="SOURCE_ROOT")
+        if path not in shared:
+            widget_refs.append(ref)
+        widget_builds.append(add("widgets.build." + relative, "PBXBuildFile", fileRef=ref))
+    widget_info = add("widgets.info", "PBXFileReference", lastKnownFileType="text.plist.xml", path="Widgets/Info.plist", sourceTree="SOURCE_ROOT")
+    widget_group = add("widgets.group", "PBXGroup", children=widget_refs + [widget_info], name="Widgets", sourceTree="<group>")
+    objects[main_group]["children"].append(widget_group)
+    widget_product = add("widgets.product", "PBXFileReference", explicitFileType="wrapper.app-extension",
+        path="SonoraWidgets.appex", sourceTree="BUILT_PRODUCTS_DIR", includeInIndex="0")
+    objects[products]["children"].append(widget_product)
+    widget_list = add("widgets.configs", "XCConfigurationList", buildConfigurations=widget_configs, defaultConfigurationIsVisible="0", defaultConfigurationName="Release")
+    widget_sources = add("widgets.sources", "PBXSourcesBuildPhase", buildActionMask="2147483647", files=widget_builds, runOnlyForDeploymentPostprocessing="0")
+    widget_strings = add("widgets.strings", "PBXBuildFile", fileRef=variant)
+    widget_resources = add("widgets.resources", "PBXResourcesBuildPhase", buildActionMask="2147483647", files=[widget_strings], runOnlyForDeploymentPostprocessing="0")
+    widget = add("widgets.target", "PBXNativeTarget", buildConfigurationList=widget_list,
+        buildPhases=[widget_sources, widget_resources], buildRules=[], dependencies=[], name="SonoraWidgets",
+        productName="SonoraWidgets", productReference=widget_product, productType="com.apple.product-type.app-extension")
+    widget_proxy = add("widgets.proxy", "PBXContainerItemProxy", containerPortal=identifier("project"), proxyType="1", remoteGlobalIDString=widget, remoteInfo="SonoraWidgets")
+    widget_dependency = add("widgets.dependency", "PBXTargetDependency", target=widget, targetProxy=widget_proxy)
+    embed = add("widgets.embed", "PBXBuildFile", fileRef=widget_product, settings={"ATTRIBUTES": ["RemoveHeadersOnCopy"]})
+    embed_phase = add("widgets.embed.phase", "PBXCopyFilesBuildPhase", buildActionMask="2147483647",
+        dstPath="", dstSubfolderSpec="13", files=[embed], name="Embed App Extensions", runOnlyForDeploymentPostprocessing="0")
+    objects[target]["buildPhases"].append(embed_phase)
+    objects[target]["dependencies"].append(widget_dependency)
     test_refs, test_builds = [], []
     for path in sorted((IOS / "UITests").glob("*.swift")):
         relative = str(path.relative_to(IOS))
@@ -175,7 +219,7 @@ def project():
     proxy = add("tests.proxy", "PBXContainerItemProxy", containerPortal=identifier("project"), proxyType="1", remoteGlobalIDString=target, remoteInfo="Sonora")
     dependency = add("tests.dependency", "PBXTargetDependency", target=target, targetProxy=proxy)
     test_target = add("tests.target", "PBXNativeTarget", buildConfigurationList=test_list, buildPhases=[test_sources], buildRules=[], dependencies=[dependency], name="SonoraUITests", productName="SonoraUITests", productReference=test_product, productType="com.apple.product-type.bundle.ui-testing")
-    root = add("project", "PBXProject", attributes={"LastUpgradeCheck": "2600", "TargetAttributes": {test_target: {"TestTargetID": target}}}, buildConfigurationList=project_list, compatibilityVersion="Xcode 14.0", developmentRegion="en", hasScannedForEncodings="0", knownRegions=["en", "Base"], mainGroup=main_group, productRefGroup=products, projectDirPath="", projectRoot="", targets=[target, test_target])
+    root = add("project", "PBXProject", attributes={"LastUpgradeCheck": "2600", "TargetAttributes": {test_target: {"TestTargetID": target}}}, buildConfigurationList=project_list, compatibilityVersion="Xcode 14.0", developmentRegion="en", hasScannedForEncodings="0", knownRegions=["en", "Base"], mainGroup=main_group, productRefGroup=products, projectDirPath="", projectRoot="", targets=[target, widget, test_target])
     write_if_changed(IOS / "Sonora.xcodeproj/project.pbxproj", "// !$*UTF8*$!\n" + plist({"archiveVersion": "1", "classes": {}, "objectVersion": "56", "objects": objects, "rootObject": root}) + "\n")
     write_if_changed(IOS / "Sonora.xcodeproj/xcshareddata/xcschemes/Sonora.xcscheme", f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme LastUpgradeVersion="2600" version="1.3">

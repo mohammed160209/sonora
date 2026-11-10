@@ -307,6 +307,13 @@ final class SettingsStore {
         saveHistory()
     }
 
+    /// History is newest first. A rewind keeps only the songs heard before the selected entry.
+    func rewindHistory(from track: MusicTrack) {
+        guard let index = history.firstIndex(where: { $0.id == track.id }) else { return }
+        history.removeFirst(index + 1)
+        saveHistory()
+    }
+
     func clearHistory() {
         history.removeAll()
         saveHistory()

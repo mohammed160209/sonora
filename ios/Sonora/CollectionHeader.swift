@@ -13,8 +13,8 @@ struct MusicCollectionHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Layout.spacing) {
             GeometryReader { geometry in
-                cover(side: min(geometry.size.width, Layout.collectionArtwork))
-                    .frame(maxWidth: .infinity)
+                let side = min(geometry.size.width, Layout.collectionArtwork)
+                cover(side: side).position(x: geometry.size.width / 2, y: side / 2)
             }
             .frame(height: Layout.collectionArtwork)
             VStack(alignment: .leading, spacing: Layout.compact / 2) {

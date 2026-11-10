@@ -6,7 +6,7 @@ struct SonoraApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @State private var account = AccountStore()
-    @State private var library = LibraryStore()
+    @State private var library: LibraryStore
     @State private var localLibrary = LocalLibraryStore()
     @State private var settings: SettingsStore
     @State private var downloads: DownloadsStore
@@ -21,6 +21,8 @@ struct SonoraApp: App {
     init() {
         let settings = SettingsStore()
         let downloads = DownloadsStore()
+        let library = LibraryStore()
+        let playback = PlaybackController(downloads: downloads, settings: settings)
         #if DEBUG
         // Review launches use the real production toggle, without changing Release preferences.
         if ProcessInfo.processInfo.arguments.contains("--sonora-review-url") {
@@ -29,7 +31,11 @@ struct SonoraApp: App {
         #endif
         _settings = State(initialValue: settings)
         _downloads = State(initialValue: downloads)
-        _playback = State(initialValue: PlaybackController(downloads: downloads, settings: settings))
+        _library = State(initialValue: library)
+        _playback = State(initialValue: playback)
+        WidgetPlayer.library = library
+        WidgetPlayer.downloads = downloads
+        WidgetPlayer.playback = playback
     }
 
     var body: some Scene {

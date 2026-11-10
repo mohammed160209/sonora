@@ -364,6 +364,10 @@
 "ios-unpin" = "Unpin";
 "ios-version" = "Version";
 "ios-view-as" = "View As";
+"ios-widget-description" = "See what is playing and control Sonora from your Home Screen.";
+"ios-widget-empty" = "Play music in Sonora";
+"ios-widget-toggle" = "Play or pause";
+"ios-widget-transport" = "Control Sonora playback";
 "ios-year" = "Year";
 "ios-your-music" = "Your music, with you";
 "ios-youtube-music" = "YouTube Music";

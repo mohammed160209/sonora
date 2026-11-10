@@ -10,6 +10,7 @@ struct ArtworkImage<Content: View, Placeholder: View>: View {
     let content: (Image) -> Content
     let placeholder: () -> Placeholder
     @State private var localImage: UIImage?
+    @State private var displayedCover: String?
 
     init(url: URL?, @ViewBuilder content: @escaping (Image) -> Content,
          @ViewBuilder placeholder: @escaping () -> Placeholder) {
@@ -29,9 +30,15 @@ struct ArtworkImage<Content: View, Placeholder: View>: View {
             else { placeholder() }
         }
         .task(id: "\(resolved?.absoluteString ?? "")|\(downloads.isOffline)") {
-            localImage = nil
-            guard let resolved, let data = try? await ArtworkFiles.shared.data(resolved), !Task.isCancelled else { return }
-            localImage = UIImage(data: data)
+            let identity = resolved.map(DownloadArtworkIndex.key)
+            if displayedCover != identity { localImage = nil; displayedCover = identity }
+            guard let resolved else { return }
+            if localImage == nil, let cached = await ArtworkFiles.shared.cachedRendition(resolved), !Task.isCancelled {
+                localImage = UIImage(data: cached)
+            }
+            if let data = try? await ArtworkFiles.shared.data(resolved), !Task.isCancelled {
+                localImage = UIImage(data: data) ?? localImage
+            }
         }
     }
 }
@@ -40,11 +47,20 @@ struct ArtworkImage<Content: View, Placeholder: View>: View {
 actor ArtworkFiles {
     static let shared = ArtworkFiles()
     private let cache = NSCache<NSURL, NSData>()
+    private let renditions = NSCache<NSString, NSData>()
     private static let maximumData = 20 * 1_024 * 1_024
     private static let maximumPixels = 1_600
     static var root: URL { URL.applicationSupportDirectory.appendingPathComponent("Audio/Artwork", isDirectory: true) }
 
-    init() { cache.totalCostLimit = Self.maximumData }
+    init() {
+        cache.totalCostLimit = Self.maximumData
+        renditions.totalCostLimit = 4 * 1_024 * 1_024
+    }
+
+    /// Reuse a grid or row thumbnail while a collection detail requests the larger version.
+    func cachedRendition(_ url: URL) -> Data? {
+        renditions.object(forKey: DownloadArtworkIndex.key(url) as NSString).map { $0 as Data }
+    }
 
     func data(_ url: URL, allowsCellular: Bool = true) async throws -> Data {
         let url = DownloadArtworkIndex.shared.localURL(for: url) ?? url
@@ -62,6 +78,9 @@ actor ArtworkFiles {
             data = received
         }
         cache.setObject(data as NSData, forKey: url as NSURL, cost: data.count)
+        if !url.isFileURL, data.count <= 512 * 1_024 {
+            renditions.setObject(data as NSData, forKey: DownloadArtworkIndex.key(url) as NSString, cost: data.count)
+        }
         return data
     }
 
@@ -102,7 +121,7 @@ actor ArtworkFiles {
         }
     }
 
-    func clearMemoryCache() { cache.removeAllObjects() }
+    func clearMemoryCache() { cache.removeAllObjects(); renditions.removeAllObjects() }
 
     func removeDownloaded(audioURL: URL) {
         guard Self.validDownloadedAudio(audioURL) else { return }
@@ -157,7 +176,7 @@ final class DownloadArtworkIndex: @unchecked Sendable {
         let url = DownloadsStore.root.appendingPathComponent(filename)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
-    private static func key(_ url: URL) -> String {
+    static func key(_ url: URL) -> String {
         let host = url.host ?? ""
         if host.hasSuffix(".googleusercontent.com") || host.hasSuffix(".ggpht.com") {
             return String(url.absoluteString.split(separator: "=", maxSplits: 1)[0])

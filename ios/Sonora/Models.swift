@@ -294,8 +294,8 @@ enum Layout {
     static let playerTransportLift: CGFloat = 14
     static let playerTimeLabelLift: CGFloat = 10
     static let playerTransitionDuration: TimeInterval = 0.5
-    static let playerDismissMinimumSettle: TimeInterval = 0.48
-    static let playerDismissMaximumSettle: TimeInterval = 0.64
+    static let playerDismissMinimumSettle: TimeInterval = 0.60
+    static let playerDismissMaximumSettle: TimeInterval = 0.76
     static let playerSeekOffset: CGFloat = 3
     static let playerFooterInset: CGFloat = 26
     static let playerFooterOffset: CGFloat = 5

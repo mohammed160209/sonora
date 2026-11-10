@@ -20,6 +20,8 @@ on:
   push:
     paths:
       - 'ios/Sonora/**'
+      - 'ios/WidgetShared/**'
+      - 'ios/Widgets/**'
       - 'ios/Sonora.xcodeproj/**'
       - 'ios/scripts/**'
       - 'ios/UITests/**'
@@ -45,6 +47,8 @@ on:
   pull_request:
     paths:
       - 'ios/Sonora/**'
+      - 'ios/WidgetShared/**'
+      - 'ios/Widgets/**'
       - 'ios/Sonora.xcodeproj/**'
       - 'ios/scripts/**'
       - 'ios/UITests/**'

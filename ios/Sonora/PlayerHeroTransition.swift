@@ -90,10 +90,11 @@ import UIKit
         let start = handoffRect
         let target = targetRect
         guard !target.isEmpty else { return }
-        // A monotone Hermite path starts downward with the panel and gently bends toward the pill.
-        // The same presentation-layer displacement drives position, size and rounding on every frame.
-        let eased = progress * progress * (3 - 2 * progress)
-        let tangent = min(remaining, max(0, 3 * (target.midY - start.midY)))
+        // The panel already eases out. Blend that progress with a mild size curve so the
+        // cover starts moving on release and spreads its shrink over the whole settle.
+        let smooth = progress * progress * (3 - 2 * progress)
+        let eased = opening ? smooth : progress * 0.7 + smooth * 0.3
+        let tangent = min(remaining, max(0, target.midY - start.midY))
         let bend = progress * (1 - progress) * (1 - progress)
         func mix(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * eased }
         let size = CGSize(width: mix(start.width, target.width), height: mix(start.height, target.height))

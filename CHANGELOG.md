@@ -9,6 +9,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Add small, medium and large iPhone Home Screen widgets with artwork, play/pause, previous and next.
+
 - Start or join Sonora Listening Sessions on iPhone with a six-digit code, and share the YouTube Music queue and playback controls with other listeners.
 
 - Play and Shuffle on iPhone artist pages queue songs from the artist’s YouTube Music releases as well as their top songs.
@@ -53,6 +55,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Account playback compatibility is still under verification.
 
 ### Fixed
+
+- Rewinding into History now moves the selected song and everything after it out of History and into playback. Closing the player eases its cover into the mini-player, and more album and playlist links open from their cover art.
 
 - Replay listening history in chronological order from the selected song and then continue the existing queue. Queue and History menus lift the selected song with a solid preview background.
 - Verify complete, playable audio before marking iPhone downloads as ready, recover transfers that finished during app relaunch, and retry temporary transfer failures with fresh links.

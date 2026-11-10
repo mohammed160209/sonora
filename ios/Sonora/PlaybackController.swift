@@ -63,6 +63,7 @@ final class PlaybackController {
     @ObservationIgnored private var listen = ListeningProgress()
     @ObservationIgnored private var listenID = UUID()
     @ObservationIgnored private var announcedListen = false
+    @ObservationIgnored private var replayingHistory = false
     @ObservationIgnored private var interruptedWhilePlaying = false
     @ObservationIgnored private var didRestore = false
     @ObservationIgnored private var wantsToPlay = false
@@ -134,7 +135,7 @@ final class PlaybackController {
         queueSource = snapshot.source
         if let item = queueItems.first(where: { $0.id == snapshot.currentEntry })
             ?? queueItems.first(where: { $0.track.id == snapshot.current }) {
-            selectQueueItem(item.id, autoplay: false)
+            selectQueueItem(item.id, autoplay: false, fromHistory: snapshot.replayingHistory ?? false)
         }
     }
 
@@ -174,12 +175,26 @@ final class PlaybackController {
     func replayHistory(from track: MusicTrack) {
         let history = settings.history.reversed().filter { $0.id != current?.id }
         guard let index = history.firstIndex(where: { $0.id == track.id }) else { return }
-        let remainder = (current.map { [$0] } ?? []) + upcomingItems.map(\.track)
-        play(track, in: Array(history[index...]) + remainder, source: String(localized: "ios-history"))
+        guard canPlay(track) else { error = String(localized: "ios-offline-required"); return }
+        if track.youtubeID == nil, !FileManager.default.fileExists(atPath: localAudioURL(for: track).path) {
+            error = String(localized: "ios-missing-file"); return
+        }
+        let remainder = (current.map { [QueuedTrack(track: $0)] } ?? []) + upcomingItems
+        let replay = history[index...].map { QueuedTrack(track: $0) }
+        guard let first = replay.first else { return }
+        didRestore = true
+        error = nil
+        queueSource = String(localized: "ios-history")
+        isShuffled = false
+        queueItems = replay + remainder
+        originalQueue = queueItems
+        selectQueueItem(first.id, fromHistory: true)
+        if currentQueueID == first.id { settings.rewindHistory(from: track) }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--sonora-review-history") {
             let report: [String: Any] = ["selected": track.id, "current": current?.id ?? "",
-                "upcoming": upcomingItems.map(\.track.id), "remainder": remainder.map(\.id)]
+                "upcoming": upcomingItems.map(\.track.id), "remainder": remainder.map(\.track.id),
+                "history": settings.history.map(\.id)]
             if let data = try? JSONSerialization.data(withJSONObject: report) {
                 try? data.write(to: URL.applicationSupportDirectory.appendingPathComponent("history-replay-review.json"), options: .atomic)
             }
@@ -450,7 +465,7 @@ final class PlaybackController {
     }
 
     /// Selects an occurrence rather than the first copy of a repeated song.
-    func selectQueueItem(_ id: UUID, autoplay: Bool = true) {
+    func selectQueueItem(_ id: UUID, autoplay: Bool = true, fromHistory: Bool = false) {
         guard let item = queueItems.first(where: { $0.id == id }) else { return }
         guard canPlay(item.track) else { error = String(localized: "ios-offline-required"); return }
         let track = item.track
@@ -462,7 +477,7 @@ final class PlaybackController {
             localItem = AVPlayerItem(url: downloaded)
             streamBadge = String(localized: "ios-downloaded")
         } else if track.youtubeID == nil {
-            let url = URL.applicationSupportDirectory.appendingPathComponent("Audio").appendingPathComponent(track.filename)
+            let url = localAudioURL(for: track)
             guard FileManager.default.fileExists(atPath: url.path) else {
                 error = String(localized: "ios-missing-file")
                 return
@@ -472,6 +487,8 @@ final class PlaybackController {
         } else {
             streamBadge = nil
         }
+        if replayingHistory, announcedListen, !fromHistory, let current { settings.recordHistory(current) }
+        replayingHistory = fromHistory
         current = track
         currentQueueID = id
         listen = ListeningProgress()
@@ -555,7 +572,7 @@ final class PlaybackController {
         listen.sample(position: presentationElapsed, uptime: ProcessInfo.processInfo.systemUptime, playing: isPlaying)
         if isPlaying && !announcedListen {
             announcedListen = true
-            settings.recordHistory(current)
+            if !replayingHistory { settings.recordHistory(current) }
             settings.announceNowPlaying(current, duration: duration)
         }
         if listen.earn(duration: duration), let started = listen.startedAt {
@@ -802,6 +819,10 @@ final class PlaybackController {
         track.available != false && (!downloads.isOffline || track.youtubeID == nil || downloads.fileURL(for: track.id) != nil)
     }
 
+    private func localAudioURL(for track: MusicTrack) -> URL {
+        URL.applicationSupportDirectory.appendingPathComponent("Audio").appendingPathComponent(track.filename)
+    }
+
     /// Download backfill can replace an old remote artwork URL without changing the queue's track identity.
     func refreshArtwork() { if let current { loadLockScreenArtwork(for: current) } }
 
@@ -855,6 +876,7 @@ final class PlaybackController {
     }
 
     private func publishNowPlaying() {
+        WidgetPlayer.publish(track: current, playing: sessionWantsPlayback, image: current == nil ? nil : currentArtwork)
         #if DEBUG
         writeReviewState()
         #endif
@@ -993,13 +1015,15 @@ final class PlaybackController {
         var shuffled: Bool? = nil
         var repeatMode: RepeatMode? = nil
         var source: String? = nil
+        var replayingHistory: Bool? = nil
     }
 
     private func saveQueue() {
         let value = Snapshot(ids: queue.map(\.id), current: current?.id, tracks: queue,
             entries: queueItems, original: originalQueue, currentEntry: currentQueueID,
-            shuffled: isShuffled, repeatMode: repeatMode, source: queueSource)
+            shuffled: isShuffled, repeatMode: repeatMode, source: queueSource, replayingHistory: replayingHistory)
         if let data = try? JSONEncoder().encode(value) { UserDefaults.standard.set(data, forKey: snapshotKey) }
+        if current == nil { WidgetPlayer.publish(track: nil, playing: false, image: nil) }
     }
 }
 

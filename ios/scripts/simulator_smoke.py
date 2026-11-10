@@ -205,10 +205,10 @@ def review_interactions_only(udid, container):
     assert replay["current"] == replay["selected"]
     remainder = replay["remainder"]
     assert remainder and replay["upcoming"][-len(remainder):] == remainder
-    numbers = [int(track.rsplit("-", 1)[-1]) for track in [replay["selected"], *replay["upcoming"][:-len(remainder)]]]
-    assert len(numbers) >= 2 and numbers == sorted(set(numbers)), "History did not replay forward into the existing queue"
-    older = [int(track.rsplit("-", 1)[-1]) for track in replay["history"]]
-    assert older and older == sorted(set(older), reverse=True) and max(older) < numbers[0], "Replayed entries remained in History"
+    original = replay["originalHistory"]
+    split = original.index(replay["selected"])
+    assert original[split + 1:] and replay["upcoming"][:-len(remainder)] == original[split + 1:], "History did not replay forward into the existing queue"
+    assert split > 0 and replay["history"] == original[:split][::-1], "History did not retain exactly the older entries"
     assert json.loads((OUTPUT / "download-integrity-review.json").read_text())["passed"], "Audio integrity validation failed"
     assert json.loads((OUTPUT / "download-lyrics-review.json").read_text())["passed"], "Downloaded timed lyrics did not persist"
     assert json.loads((OUTPUT / "offline-artwork-restore-review.json").read_text())["passed"], "Offline relaunch did not decode saved artwork"

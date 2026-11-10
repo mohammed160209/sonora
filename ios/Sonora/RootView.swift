@@ -145,7 +145,14 @@ struct RootView: View {
         guard url.scheme == "sonora",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
         if url.host == "nowplaying" {
-            if playback.current != nil { playerMode = "artwork"; showPlayer = true }
+            Task {
+                if playback.current == nil {
+                    await downloads.waitForRestoration()
+                    await library.load()
+                    if library.isLoaded { playback.restore(from: library.tracks) }
+                }
+                if playback.current != nil { playerMode = "artwork"; showPlayer = true }
+            }
             return
         }
         #if DEBUG

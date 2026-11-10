@@ -102,8 +102,9 @@ final class MusicInteractionTests: XCTestCase {
         expectation(for: NSPredicate { _, _ in !app.buttons[pastID].exists }, evaluatedWith: app)
         waitForExpectations(timeout: 8)
         list.swipeDown(); list.swipeDown()
-        guard let replay = history.allElementsBoundByIndex.first(where: { $0.isHittable && !$0.identifier.hasSuffix("-8") }) else {
-            XCTFail("No visible earlier history entry"); return
+        let middleEntries = Set((3...7).map { "history-row-review-history-\($0)" })
+        guard let replay = history.allElementsBoundByIndex.first(where: { middleEntries.contains($0.identifier) && $0.isHittable }) else {
+            XCTFail("No visible middle history entry"); return
         }
         replay.tap()
     }

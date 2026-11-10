@@ -7,6 +7,7 @@ import WidgetKit
     static weak var playback: PlaybackController?
     static weak var library: LibraryStore?
     static weak var downloads: DownloadsStore?
+    private static let stateURL = WidgetPlayback.stateURL
     private static var previous: WidgetPlayback?
     private static weak var artwork: UIImage?
     private static var artworkData: Data?
@@ -27,7 +28,7 @@ import WidgetKit
 
     /// Cache the small cover independently so repeated progress updates do no image work or disk writes.
     static func publish(track: MusicTrack?, playing: Bool, image: UIImage?) {
-        guard let url = WidgetPlayback.stateURL else { return }
+        guard let url = stateURL else { return }
         if let image, artwork !== image {
             artwork = image
             artworkData = thumbnail(image)

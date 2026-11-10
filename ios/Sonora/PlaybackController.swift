@@ -194,7 +194,7 @@ final class PlaybackController {
         if ProcessInfo.processInfo.arguments.contains("--sonora-review-history") {
             let report: [String: Any] = ["selected": track.id, "current": current?.id ?? "",
                 "upcoming": upcomingItems.map(\.track.id), "remainder": remainder.map(\.track.id),
-                "history": settings.history.map(\.id)]
+                "history": settings.history.map(\.id), "originalHistory": history.map(\.id)]
             if let data = try? JSONSerialization.data(withJSONObject: report) {
                 try? data.write(to: URL.applicationSupportDirectory.appendingPathComponent("history-replay-review.json"), options: .atomic)
             }

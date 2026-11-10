@@ -1,6 +1,8 @@
 # iPhone port status
 
-Development beta, updated 7 November 2026. Build 25 is the latest verified iPhone IPA. It was built with the iOS 27.2 SDK, and all 12 interaction checks passed on the iPhone 13 simulator with iOS 27.2. Artist Play and Shuffle include tracks from YouTube Music releases. Unchanged lyrics rows skip redraws.
+Development beta, updated 10 November 2026. Build 26 is the latest verified simulator build. It includes six-digit YouTube Music Listening Sessions, chronological history replay, solid Queue and History previews, more resilient downloads and upstream lyrics improvements.
+
+Build 26 source `cfc4a7ab` passed all 12 interaction checks on the iPhone 13 simulator with iOS 27.2 (24B8117) in [run 42767363425](https://github.com/mohammed160209/sonora/actions/runs/42767363425). The checks verified history order, selected-row previews, audio validation, and offline artwork and timed lyrics after relaunch. Two protocol clients exercised the official Sessions relay. A live public YouTube Music download decoded completely on Linux. Live transfer and cross-device audio on a physical iPhone, including iOS 27.2.1, still need verification.
 
 ## Verified
 

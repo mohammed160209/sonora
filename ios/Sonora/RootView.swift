@@ -269,7 +269,7 @@ struct RootView: View {
                     settings.clearHistory()
                     for index in 1...8 {
                         settings.recordHistory(MusicTrack(id: "review-history-\(index)", title: "History \(index)",
-                            artist: "Sonora Review", filename: "", addedAt: .now))
+                            artist: "Sonora Review", filename: "", addedAt: .now, youtubeID: track.youtubeID))
                     }
                 }
                 playerMode = "queue"
@@ -454,7 +454,7 @@ struct HomeView: View {
                 HStack(alignment: .top, spacing: Layout.spacing) {
                     ForEach(settings.history.filter { $0.matchesSearch(query) }.prefix(12)) { track in
                         Button {
-                            playback.play(track, in: settings.history)
+                            playback.replayHistory(from: track)
                         } label: {
                             SquareCard(title: track.title, subtitle: track.artist, artworkURL: track.artworkURL)
                         }
@@ -1303,7 +1303,7 @@ struct HistoryCollectionView: View {
             } else {
                 List {
                     ForEach(settings.history.filter { $0.matchesSearch(query) }) { track in
-                        TrackRow(track: track) { playback.play(track, in: settings.history) }
+                        TrackRow(track: track) { playback.replayHistory(from: track) }
                             .swipeActions {
                                 Button("ios-delete", role: .destructive) {
                                     settings.removeFromHistory(track)
@@ -2138,6 +2138,7 @@ struct SettingsView: View {
                     if downloads.isOffline { Label("ios-offline-active", systemImage: "wifi.slash") }
                     Text("ios-offline-mode-description").foregroundStyle(.secondary)
                 }
+                NavigationLink("ios-listening-sessions") { ListeningSessionView() }
                 Section("ios-music-service") {
                     LabeledContent("ios-youtube-music", value: account.name ?? String(localized: "ios-guest-mode"))
                     if let handle = account.handle, !handle.isEmpty {

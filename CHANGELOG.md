@@ -9,6 +9,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Start or join Sonora Listening Sessions on iPhone with a six-digit code, and share the YouTube Music queue and playback controls with other listeners.
+
 - Play and Shuffle on iPhone artist pages queue songs from the artist’s YouTube Music releases as well as their top songs.
 
 - iPhone downloads preserve full-quality provider artwork and available timed lyrics beside the audio. Missing files for existing downloads backfill automatically, with a manual repair action in Downloads and Settings.
@@ -51,6 +53,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Account playback compatibility is still under verification.
 
 ### Fixed
+
+- Replay listening history in chronological order from the selected song and then continue the existing queue. Queue and History menus lift the selected song with a solid preview background.
+- Verify complete, playable audio before marking iPhone downloads as ready, recover transfers that finished during app relaunch, and retry temporary transfer failures with fresh links.
+- Keep timed lyrics evenly inset and scale the space between lines with the selected text size.
 
 - The iPhone lyrics player skips redrawing unchanged rows as the song advances.
 

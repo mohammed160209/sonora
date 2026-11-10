@@ -101,6 +101,11 @@ final class MusicInteractionTests: XCTestCase {
         clear.tap()
         expectation(for: NSPredicate { _, _ in !app.buttons[pastID].exists }, evaluatedWith: app)
         waitForExpectations(timeout: 8)
+        list.swipeDown(); list.swipeDown()
+        guard let replay = history.allElementsBoundByIndex.first(where: { $0.isHittable && !$0.identifier.hasSuffix("-8") }) else {
+            XCTFail("No visible earlier history entry"); return
+        }
+        replay.tap()
     }
 
     func testLocalPlaylistRenameThroughItsMenu() {

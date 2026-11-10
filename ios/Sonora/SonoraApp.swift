@@ -16,6 +16,7 @@ struct SonoraApp: App {
     @State private var fonts = FontLibrary()
     @State private var appearance = AppearanceStore()
     @State private var poTokenMinter = PoTokenMinter()
+    @State private var listening = ListeningSession()
 
     init() {
         let settings = SettingsStore()
@@ -43,6 +44,7 @@ struct SonoraApp: App {
                 .environment(downloads)
                 .environment(catalog)
                 .environment(fonts)
+                .environment(listening)
                 .environment(\.appTypeface, settings.typefaceID)
                 .fontDesign(settings.typefaceID == "rounded" ? .rounded : .default)
                 .font(InterfaceTypography.font(.body, typeface: settings.typefaceID))
@@ -52,10 +54,12 @@ struct SonoraApp: App {
                     appearance.updateArtwork(settings.accent == .artwork ? playback.current?.displayArtworkURL : nil)
                 }
                 .onChange(of: downloads.isOffline, initial: true) { _, offline in
+                    if offline { listening.leave() }
                     playback.connectivityChanged()
                     poTokenMinter.connectivityChanged()
                     if !offline { downloads.resumeQueue(); account.retryRestore(); catalog.loadHome(force: true) }
                 }
+                .onChange(of: account.revision) { _, _ in listening.leave() }
                 .onChange(of: settings.lyricsSources) { _, _ in downloads.resumeQueue() }
                 .onChange(of: settings.audioConfigurationKey, initial: true) { _, _ in playback.applyAudioGain() }
                 .onChange(of: playback.current?.displayArtworkURL, initial: true) { _, url in

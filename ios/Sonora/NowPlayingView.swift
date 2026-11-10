@@ -103,6 +103,7 @@ struct NowPlayingView: View {
     @State private var trackGestureSource: UUID?
     @State private var lyrics = LyricsStore()
     @State private var chooseLocalPlaylist = false
+    @State private var showListeningSessions = false
     @State private var addQueueSongs = false
     @State private var queuePlaylistTrack: MusicTrack?
     @State private var modeMotionActive = false
@@ -173,6 +174,9 @@ struct NowPlayingView: View {
         }
         .sheet(isPresented: $chooseLocalPlaylist) {
             NavigationStack { AddToLocalPlaylistView(trackIDs: playback.current.map { [$0.id] } ?? []) }
+        }
+        .sheet(isPresented: $showListeningSessions) {
+            NavigationStack { ListeningSessionView() }
         }
     }
 
@@ -676,6 +680,7 @@ struct NowPlayingView: View {
                     }
                 }
             }
+            Button("ios-listening-sessions", systemImage: "person.2.wave.2") { showListeningSessions = true }
             Menu("ios-sleep-timer", systemImage: "moon.zzz") {
                 ForEach(SleepTimerOption.allCases) { option in
                     Button {

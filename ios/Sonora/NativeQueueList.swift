@@ -37,7 +37,7 @@ struct NativeQueueList: UIViewRepresentable {
 
     @MainActor final class Coordinator: NSObject, UICollectionViewDelegate {
         enum Entry: Hashable, Sendable {
-            case historyHeader, past(Int), playerHeader, queueHeader, song(UUID), add, autoplay
+            case historyHeader, past(String), playerHeader, queueHeader, song(UUID), add, autoplay
         }
         var parent: NativeQueueList
         private weak var collection: UICollectionView?
@@ -129,7 +129,7 @@ struct NativeQueueList: UIViewRepresentable {
             var entries: [Entry] = []
             var updated: [Entry: MusicTrack] = [:]
             if !history.isEmpty {
-                for (index, track) in history.enumerated() { historyEntries.append(.past(index)); updated[.past(index)] = track }
+                for track in history { historyEntries.append(.past(track.id)); updated[.past(track.id)] = track }
             }
             entries.append(.playerHeader)
             entries.append(.queueHeader)
@@ -292,7 +292,7 @@ struct NativeQueueList: UIViewRepresentable {
                     .preferredColorScheme(.dark))
                 host.preferredContentSize = CGSize(width: min(Layout.contextPreviewWidth, collectionView.bounds.width),
                     height: Layout.queuePreviewHeight)
-                host.view.backgroundColor = .clear
+                host.view.backgroundColor = QueueContextPreview.surface
                 return host
             }, actionProvider: { [weak self] _ in self?.contextActions(entry: entry, track: track) })
         }
@@ -309,19 +309,20 @@ struct NativeQueueList: UIViewRepresentable {
         /// Highlight precisely the pressed row, never an entire history section or a reused previous cell.
         private func rowPreview(_ collection: UICollectionView, indexPath: IndexPath) -> UITargetedPreview? {
             guard let cell = collection.cellForItem(at: indexPath), cell.window != nil,
-                  let entry = dataSource.itemIdentifier(for: indexPath), tracks[entry] != nil else { return nil }
+                  let entry = dataSource.itemIdentifier(for: indexPath), entry == previewEntry, tracks[entry] != nil else { return nil }
             if let mask = historyMasks.object(forKey: cell), cell.layer.mask === mask {
                 cell.layer.mask = nil; historyMasks.removeObject(forKey: cell)
             }
             previewCell = cell
             let parameters = UIPreviewParameters()
-            parameters.backgroundColor = .clear
+            parameters.backgroundColor = QueueContextPreview.surface
             parameters.visiblePath = UIBezierPath(roundedRect: cell.contentView.bounds, cornerRadius: Layout.cardRadius)
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--sonora-review-url") {
                 let url = URL.applicationSupportDirectory.appendingPathComponent("queue-context-preview-review.json")
                 var records = ((try? Data(contentsOf: url)).flatMap { try? JSONSerialization.jsonObject(with: $0) }) as? [[String: Any]] ?? []
                 records.append(["section": indexPath.section, "item": indexPath.item, "hasLiveCell": true,
+                    "opaqueBackground": QueueContextPreview.surface.cgColor.alpha == 1,
                     "kind": indexPath.section == 0 ? "history" : "queue"])
                 if let data = try? JSONSerialization.data(withJSONObject: Array(records.suffix(20))) { try? data.write(to: url, options: .atomic) }
             }
@@ -347,7 +348,7 @@ struct NativeQueueList: UIViewRepresentable {
             animator.addCompletion { [weak self] in
                 guard let self else { return }
                 if case .song(let id) = entry { self.parent.playback.selectQueueItem(id) }
-                else { self.parent.playback.play(track, in: self.parent.settings.history) }
+                else { self.parent.playback.replayHistory(from: track) }
             }
         }
 
@@ -421,7 +422,7 @@ struct NativeQueueList: UIViewRepresentable {
                 if let track = tracks[entry] {
                     Button { [weak self] in
                         guard let self else { return }
-                        self.parent.playback.play(track, in: self.parent.settings.history)
+                        self.parent.playback.replayHistory(from: track)
                     } label: { QueueSongLabel(track: track) }.buttonStyle(.plain).accessibilityIdentifier("history-row-" + track.id)
                 }
             case .playerHeader:
@@ -489,6 +490,9 @@ private struct QueueSongLabel: View {
 
 /// The lifted preview is a single opaque card, with the selected song's own artwork and metadata.
 private struct QueueContextPreview: View {
+    static var surface: UIColor {
+        UIColor.secondarySystemGroupedBackground.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
+    }
     let track: MusicTrack
     var body: some View {
         HStack(spacing: Layout.spacing) {
@@ -504,7 +508,7 @@ private struct QueueContextPreview: View {
         }
         .padding(Layout.spacing)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(.thickMaterial, in: RoundedRectangle(cornerRadius: Layout.contextPreviewRadius))
+        .background(Color(uiColor: Self.surface), in: RoundedRectangle(cornerRadius: Layout.contextPreviewRadius))
         .accessibilityElement(children: .combine).accessibilityIdentifier("queue-context-preview")
     }
 }

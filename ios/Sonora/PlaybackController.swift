@@ -22,6 +22,10 @@ final class PlaybackController {
     private(set) var currentArtwork: UIImage?
     private var seekID: UUID?
     private var pendingSeekTarget: Double?
+    private var deferredSessionSeek: Double?
+    private(set) var sessionSeekRevision = 0
+    var sessionWantsPlayback: Bool { wantsToPlay || isPlaying || isLoading }
+    var sessionPosition: Double { deferredSessionSeek ?? pendingSeekTarget ?? presentationElapsed }
     private var nativeClockRevision = 0
     /// The native clock is sampled for word timing without guessing from coarse UI updates.
     var presentationElapsed: Double {
@@ -140,7 +144,7 @@ final class PlaybackController {
         else { restore(from: tracks) }
     }
 
-    func play(_ track: MusicTrack, in tracks: [MusicTrack], source: String? = nil) {
+    func play(_ track: MusicTrack, in tracks: [MusicTrack], source: String? = nil, autoplay: Bool = true) {
         guard track.available != false else { return }
         guard canPlay(track) else { error = String(localized: "ios-offline-required"); return }
         // Explicit playback wins over a still-pending library/queue restoration.
@@ -151,7 +155,7 @@ final class PlaybackController {
         originalQueue = (playable.isEmpty ? [track] : playable).map { QueuedTrack(track: $0) }
         queueItems = originalQueue
         isShuffled = false
-        select(track, autoplay: true)
+        select(track, autoplay: autoplay)
     }
 
     func playShuffled(_ tracks: [MusicTrack], source: String? = nil) {
@@ -164,6 +168,51 @@ final class PlaybackController {
         isShuffled = true
         queueItems = [first] + playable.filter { $0.id != first.id }.shuffled()
         selectQueueItem(first.id, autoplay: true)
+    }
+
+    /// Rewind into the listening history, then carry on with the current song and existing queue.
+    func replayHistory(from track: MusicTrack) {
+        let history = settings.history.reversed().filter { $0.id != current?.id }
+        guard let index = history.firstIndex(where: { $0.id == track.id }) else { return }
+        let remainder = (current.map { [$0] } ?? []) + upcomingItems.map(\.track)
+        play(track, in: Array(history[index...]) + remainder, source: String(localized: "ios-history"))
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--sonora-review-history") {
+            let report: [String: Any] = ["selected": track.id, "current": current?.id ?? "",
+                "upcoming": upcomingItems.map(\.track.id), "remainder": remainder.map(\.id)]
+            if let data = try? JSONSerialization.data(withJSONObject: report) {
+                try? data.write(to: URL.applicationSupportDirectory.appendingPathComponent("history-replay-review.json"), options: .atomic)
+            }
+        }
+        #endif
+    }
+
+    /// Apply shared queue and transport state without reloading a song already playing here.
+    func applySession(track: MusicTrack?, upcoming: [MusicTrack], playing: Bool, position: Double) {
+        guard let track else { if current?.youtubeID != nil { pause() }; return }
+        let changed = current?.id != track.id
+        let toggled = playing != sessionWantsPlayback
+        if changed {
+            play(track, in: [track] + upcoming, source: String(localized: "ios-listening-sessions"), autoplay: false)
+            guard current?.id == track.id else { return }
+        } else if let index = currentQueueIndex, upcomingItems.map(\.track.id) != upcoming.map(\.id) {
+            queueItems = Array(queueItems.prefix(index + 1)) + upcoming.map { QueuedTrack(track: $0) }
+            originalQueue = queueItems
+            isShuffled = false
+            saveQueue()
+        }
+        if changed || abs(sessionPosition - position) > (toggled || !playing ? 0.4 : 2.5) {
+            deferredSessionSeek = position
+            applyDeferredSessionSeek()
+        }
+        if playing, !sessionWantsPlayback { resume() }
+        else if !playing, sessionWantsPlayback { pause() }
+    }
+
+    private func applyDeferredSessionSeek() {
+        guard let position = deferredSessionSeek, duration > 0, player.currentItem != nil else { return }
+        deferredSessionSeek = nil
+        seek(to: position, publishToSession: false)
     }
 
     #if DEBUG
@@ -405,7 +454,7 @@ final class PlaybackController {
         guard let item = queueItems.first(where: { $0.id == id }) else { return }
         guard canPlay(item.track) else { error = String(localized: "ios-offline-required"); return }
         let track = item.track
-        seekID = nil; pendingSeekTarget = nil
+        seekID = nil; pendingSeekTarget = nil; deferredSessionSeek = nil
         pause()
         var localItem: AVPlayerItem?
         currentLoudnessDB = nil
@@ -459,6 +508,7 @@ final class PlaybackController {
         audioEnd = nil
         player.replaceCurrentItem(with: item)
         updateTimeline()
+        applyDeferredSessionSeek()
         timelineTask = Task { [weak self, weak item] in
             guard let item else { return }
             let assetDuration = try? await item.asset.load(.duration)
@@ -469,6 +519,7 @@ final class PlaybackController {
             guard !Task.isCancelled, let self, self.player.currentItem === item else { return }
             self.audioEnd = range.map { CMTimeRangeGetEnd($0).seconds }
             self.updateTimeline(native: assetDuration?.seconds)
+            self.applyDeferredSessionSeek()
         }
         applyAudioGain()
         audioEffects.attach(to: item) { [weak self, weak item] in
@@ -620,8 +671,9 @@ final class PlaybackController {
     }
 
     /// Keeps the requested position stable until the native audio clock confirms the exact seek.
-    func seek(to seconds: Double) {
+    func seek(to seconds: Double, publishToSession: Bool = true) {
         guard seconds.isFinite, duration > 0, let item = player.currentItem else { return }
+        if publishToSession { sessionSeekRevision &+= 1 }
         trackListen(); listen.rebase()
         let target = min(max(0, seconds), duration)
         let token = UUID()

@@ -7,7 +7,7 @@
     <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.3.0</string>
-    <key>CFBundleVersion</key><string>25</string>
+    <key>CFBundleVersion</key><string>26</string>
     <key>LSRequiresIPhoneOS</key><true/>
     <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLSchemes</key><array><string>sonora</string></array></dict></array>
     <key>UIBackgroundModes</key><array><string>audio</string></array>

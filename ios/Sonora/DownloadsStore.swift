@@ -17,6 +17,7 @@ struct DownloadEntry: Codable, Identifiable {
     var sourceDuration: Double? = nil
     var progress: Double = 0
     var failureCode: String? = nil
+    var transferRetries: Int? = nil
     var artworkState: LyricsState? = nil
     var lyricsState: LyricsState? = nil
     var lyricsSources: [String]? = nil
@@ -188,7 +189,17 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
                 case .resolving, .queued:
                     self.entries[index].state = .queued
                 case .downloading:
-                    if !active.contains(self.entries[index].taskID ?? -1) { self.entries[index].state = .queued }
+                    let entry = self.entries[index]
+                    guard !active.contains(entry.taskID ?? -1) else { continue }
+                    let url = Self.root.appendingPathComponent(entry.filename)
+                    let valid = (try? await Self.validateAudio(url, expected: entry.expectedBytes)) == true
+                    guard let current = self.entries.firstIndex(where: {
+                        $0.filename == entry.filename && $0.taskID == entry.taskID && $0.state == .downloading
+                    }) else { continue }
+                    self.entries[current].state = valid ? .downloaded : .queued
+                    self.entries[current].progress = valid ? 1 : 0
+                    self.entries[current].taskID = nil
+                    if !valid { try? FileManager.default.removeItem(at: url) }
                 case .failed: break
                 }
             }
@@ -264,6 +275,7 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
         entries[index].taskID = nil
         entries[index].expectedBytes = nil
         entries[index].failureCode = nil
+        entries[index].transferRetries = nil
         persist()
         pump()
     }
@@ -322,8 +334,9 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
     private func pump() {
         pumpLyrics()
         pumpArtwork()
-        guard networkPathKnown, !isOffline, !isRestoring, error == nil, UIApplication.shared.applicationState != .background else { return }
-        let active = entries.filter { $0.state == .resolving }.count
+        guard networkPathKnown, !isOffline, allowsCellular || !lyricsOnCellular,
+              !isRestoring, error == nil, UIApplication.shared.applicationState != .background else { return }
+        let active = entries.filter { $0.state == .resolving || $0.state == .downloading }.count
         let queued = entries.filter { $0.state == .queued }.prefix(max(0, 2 - active))
         for entry in queued { start(entry) }
     }
@@ -331,8 +344,9 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
     /// Offline mode pauses background transfers and cancels provider/asset requests without deleting files.
     private func updateConnectivity() {
         NetworkAccess.shared.update(offline: isOffline)
-        if isOffline || (!allowsCellular && lyricsOnCellular) { lyricsTask?.cancel(); artworkTask?.cancel() }
-        if isOffline {
+        let transfersAllowed = !isOffline && (allowsCellular || !lyricsOnCellular)
+        if !transfersAllowed {
+            lyricsTask?.cancel(); artworkTask?.cancel()
             for task in resolving.values { task.cancel() }
             resolving.removeAll()
             for index in entries.indices where entries[index].state == .resolving { entries[index].state = .queued }
@@ -476,6 +490,16 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
         var checks: [String: Bool] = [:]
         guard let entry = entry(for: "youtube:reviewSaved"), let audio = fileURL(for: entry.id) else { return false }
         do {
+            let size = UInt64(try audio.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
+            let complete = try await Self.validateAudio(audio, expected: size)
+            let truncated = try await Self.validateAudio(audio, expected: size + 1)
+            let invalid = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")
+            defer { try? FileManager.default.removeItem(at: invalid) }
+            try Data("not audio".utf8).write(to: invalid)
+            let unplayable = (try? await Self.validateAudio(invalid, expected: nil)) == true
+            let validation = ["passed": complete && !truncated && !unplayable, "complete_audio": complete,
+                              "rejects_wrong_length": !truncated, "rejects_non_audio": !unplayable]
+            try JSONSerialization.data(withJSONObject: validation).write(to: URL.applicationSupportDirectory.appendingPathComponent("download-integrity-review.json"), options: .atomic)
             let timed = try await NativeProvider.parseLyrics("[00:01.25]<00:01.25>Downloaded <00:02.00>lyrics<00:03.00>\n[00:04.50]Ready offline\n", format: "lrc")
             let plain = try await NativeProvider.parseLyrics("A plain fallback", format: "lrc")
             let response = NativeProvider.Lyrics(text: plain.text, lines: plain.lines, synced: false, instrumental: nil,
@@ -573,14 +597,14 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
             do {
                 let stream = try await NativeProvider.resolve(videoID, quality: quality)
                 try Task.checkCancellation()
-                guard let length = stream.content_length, length > 0 else { throw ProviderError.unavailable }
                 guard let self, !self.isOffline, let index = self.entries.firstIndex(where: { $0.filename == entry.filename }) else { return }
                 var request = URLRequest(url: stream.url)
                 request.setValue(stream.user_agent, forHTTPHeaderField: "User-Agent")
                 request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
                 request.setValue("https://www.youtube.com", forHTTPHeaderField: "Origin")
                 request.setValue("https://www.youtube.com/", forHTTPHeaderField: "Referer")
-                request.setValue("bytes=0-\(length - 1)", forHTTPHeaderField: "Range")
+                let length = stream.content_length.flatMap { $0 > 0 ? $0 : nil }
+                if let length { request.setValue("bytes=0-\(length - 1)", forHTTPHeaderField: "Range") }
                 request.allowsCellularAccess = self.allowsCellular
                 let transfer = self.session.downloadTask(with: request)
                 transfer.taskDescription = entry.filename
@@ -625,13 +649,31 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
 
     private func failed(_ taskID: Int, reason: String = "transfer_failed") {
         guard let index = entries.firstIndex(where: { $0.taskID == taskID }) else { return }
-        entries[index].state = isOffline && reason.hasPrefix("network_") ? .queued : .failed
+        let waitingForConnection = (isOffline || (!allowsCellular && lyricsOnCellular)) && reason.hasPrefix("network_")
+        let retryable = ["http_401", "http_403", "http_410", "http_416", "http_500", "http_502", "http_503",
+                         "network_-1001", "network_-1005", "network_-1009", "size_mismatch", "partial_response"].contains(reason)
+        let retries = entries[index].transferRetries ?? 0
+        let retry = retryable && retries < 2
+        entries[index].state = waitingForConnection || retry ? .queued : .failed
+        if retry && !waitingForConnection { entries[index].transferRetries = retries + 1 }
+        entries[index].progress = 0
         entries[index].taskID = nil
         entries[index].failureCode = entries[index].state == .queued ? nil : reason
         lastProgress.removeValue(forKey: taskID)
         transfers.removeValue(forKey: taskID)
         persist()
         pump()
+    }
+
+    /// Confirm the complete payload contains a usable audio timeline before exposing it offline.
+    private static func validateAudio(_ url: URL, expected: UInt64?) async throws -> Bool {
+        let bytes = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        guard bytes > 0, expected == nil || UInt64(bytes) == expected else { return false }
+        let asset = AVURLAsset(url: url)
+        let (playable, duration) = try await asset.load(.isPlayable, .duration)
+        guard playable, duration.seconds.isFinite, duration.seconds > 0 else { return false }
+        let tracks = try await asset.loadTracks(withMediaType: .audio)
+        return !tracks.isEmpty
     }
 
     private func finalize(_ taskID: Int, url: URL?, failure: String?) async {
@@ -649,20 +691,23 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
                 failed(taskID, reason: "size_mismatch")
                 return
             }
-            guard try await AVURLAsset(url: url).load(.isPlayable) else {
+            guard try await Self.validateAudio(url, expected: entries[index].expectedBytes) else {
                 try? FileManager.default.removeItem(at: url)
                 failed(taskID, reason: "unplayable")
                 return
             }
             // Awaiting metadata can race removal. Never resurrect a transfer the listener removed.
-            guard let current = entries.firstIndex(where: { $0.filename == filename }) else {
-                try? FileManager.default.removeItem(at: url)
+            guard let current = entries.firstIndex(where: { $0.filename == filename && $0.taskID == taskID }) else {
+                if !entries.contains(where: { $0.filename == filename && $0.state == .downloaded }) {
+                    try? FileManager.default.removeItem(at: url)
+                }
                 return
             }
             entries[current].state = .downloaded
             entries[current].progress = 1
             entries[current].taskID = nil
             entries[current].failureCode = nil
+            entries[current].transferRetries = nil
             persist()
             lastProgress.removeValue(forKey: taskID)
             transfers.removeValue(forKey: taskID)
@@ -683,8 +728,19 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
         if let filename = downloadTask.taskDescription,
            UUID(uuidString: (filename as NSString).deletingPathExtension) != nil,
            (filename as NSString).pathExtension == "m4a",
-           let response = downloadTask.response as? HTTPURLResponse, (200..<300).contains(response.statusCode) {
+           let response = downloadTask.response as? HTTPURLResponse,
+           response.statusCode == 200 || response.statusCode == 206 {
             do {
+                if response.statusCode == 206 {
+                    let size = try location.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                    guard size > 0, response.value(forHTTPHeaderField: "Content-Range") == "bytes 0-\(size - 1)/\(size)" else {
+                        Task { @MainActor [weak self] in
+                            guard let self else { DownloadEvents.shared.end(); return }
+                            await self.finalize(downloadTask.taskIdentifier, url: nil, failure: "partial_response")
+                        }
+                        return
+                    }
+                }
                 let target = Self.root.appendingPathComponent(filename)
                 try? FileManager.default.removeItem(at: target)
                 try FileManager.default.moveItem(at: location, to: target)

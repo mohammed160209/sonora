@@ -130,7 +130,7 @@ def run_interactions(udid, export_images=True):
     finally:
         if failed: export_crash_summaries(bundle)
         current = Path(sim("get_app_container", udid, BUNDLE, "data"))
-        for filename in ["queue-drag-review.json", "player-presentation-review.json", "queue-context-preview-review.json", "download-lyrics-review.json", "player-cover-handoff-review.json", "player-cover-motion-review.json", "offline-artwork-restore-review.json", "download-player-setup-review.json", "download-player-presentation-review.json"]:
+        for filename in ["queue-drag-review.json", "player-presentation-review.json", "queue-context-preview-review.json", "download-lyrics-review.json", "player-cover-handoff-review.json", "player-cover-motion-review.json", "offline-artwork-restore-review.json", "download-player-setup-review.json", "download-player-presentation-review.json", "download-integrity-review.json", "history-replay-review.json"]:
             evidence = current / "Library/Application Support" / filename
             if evidence.exists():
                 (OUTPUT / filename).write_bytes(evidence.read_bytes())
@@ -200,6 +200,14 @@ def review_interactions_only(udid, container):
     run_interactions(udid, export_images=False)
     previews = json.loads((OUTPUT / "queue-context-preview-review.json").read_text())
     assert {item["kind"] for item in previews} >= {"queue", "history"}, "Missing selected-row native preview evidence"
+    assert all(item["opaqueBackground"] for item in previews), "A lifted row still has a transparent background"
+    replay = json.loads((OUTPUT / "history-replay-review.json").read_text())
+    assert replay["current"] == replay["selected"]
+    remainder = replay["remainder"]
+    assert remainder and replay["upcoming"][-len(remainder):] == remainder
+    numbers = [int(track.rsplit("-", 1)[-1]) for track in [replay["selected"], *replay["upcoming"][:-len(remainder)]]]
+    assert len(numbers) >= 2 and numbers == sorted(set(numbers)), "History did not replay forward into the existing queue"
+    assert json.loads((OUTPUT / "download-integrity-review.json").read_text())["passed"], "Audio integrity validation failed"
     assert json.loads((OUTPUT / "download-lyrics-review.json").read_text())["passed"], "Downloaded timed lyrics did not persist"
     assert json.loads((OUTPUT / "offline-artwork-restore-review.json").read_text())["passed"], "Offline relaunch did not decode saved artwork"
     handoffs = json.loads((OUTPUT / "player-cover-handoff-review.json").read_text())

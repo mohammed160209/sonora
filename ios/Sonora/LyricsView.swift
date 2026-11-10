@@ -66,7 +66,7 @@ struct LyricsContentView: View {
         let active = lines.last { ($0.start_seconds ?? .infinity) <= elapsed }?.id ?? lines.first?.id
         return ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: Layout.spacing) {
+                LazyVStack(alignment: .leading, spacing: Layout.spacing * settings.lyricsScale) {
                     ForEach(lines) { line in
                         Button {
                             if let start = line.start_seconds {
@@ -82,6 +82,7 @@ struct LyricsContentView: View {
                         Text(writers.joined(separator: ", ")).appFont(.caption).foregroundStyle(.white.opacity(0.65))
                     }
                 }
+                .padding(.horizontal, Layout.compact)
                 .padding(.vertical, Layout.spacing)
             }
             .onScrollPhaseChange { _, phase, _ in

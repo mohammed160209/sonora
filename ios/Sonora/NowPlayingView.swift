@@ -1014,7 +1014,7 @@ struct NowPlayingView: View {
         lyrics.load(current.youtubeID, title: current.title, artist: current.artist,
             album: current.albumTitle, duration: current.durationSeconds,
             sources: settings.enabledLyricsSources, cacheID: current.id,
-            savedOnly: downloads.fileURL(for: current.id) != nil, downloadURL: downloads.fileURL(for: current.id))
+            savedOnly: downloads.isOffline, downloadURL: downloads.fileURL(for: current.id))
     }
 
     private func time(_ seconds: Double) -> String {

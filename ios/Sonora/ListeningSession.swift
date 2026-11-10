@@ -39,7 +39,12 @@ private struct SessionTrack: Codable {
         let seconds = duration.map { Double($0.secs) + Double($0.nanos) / 1_000_000_000 }
         return MusicTrack(id: "youtube:" + id, title: name, artist: artists, filename: "", addedAt: .now,
             youtubeID: id, artistID: artist_refs?.first?.id, albumTitle: album, albumID: album_id,
-            artworkURL: cover.flatMap { $0.scheme == "https" ? $0 : nil },
+            artworkURL: cover.flatMap { url in
+                guard url.scheme == "https", let host = url.host?.lowercased(),
+                      [".googleusercontent.com", ".ytimg.com", ".ggpht.com"].contains(where: { host.hasSuffix($0) })
+                else { return nil }
+                return url
+            },
             durationSeconds: seconds.flatMap { $0 > 0 && $0 <= 604_800 ? $0 : nil }, explicit: explicit ?? false, available: true)
     }
 }
@@ -189,6 +194,18 @@ final class ListeningSession {
     func kick(_ member: Member) {
         guard hosting, !isSelf(member) else { return }
         send(["type": "kick", "member": member.id])
+    }
+
+    /// Pause the socket on lost connectivity and rejoin the same room when the network returns.
+    func connectivityChanged(offline: Bool, manual: Bool) {
+        if offline {
+            if manual || code == nil { reset(); return }
+            disconnect()
+            retryTask?.cancel(); retryTask = nil
+            busy = true
+        } else if let code, socket == nil, retryTask == nil {
+            connect(code: code)
+        }
     }
 
     private func connect(code: String?) {
@@ -343,7 +360,11 @@ final class ListeningSession {
     private func lost(_ socket: URLSessionWebSocketTask) {
         guard self.socket === socket else { return }
         disconnect()
-        guard let code, retries < 8, !NetworkAccess.shared.isOffline else {
+        if code != nil && NetworkAccess.shared.isOffline {
+            busy = true
+            return
+        }
+        guard let code, retries < 8 else {
             fail(String(localized: "ios-session-unreachable"))
             return
         }

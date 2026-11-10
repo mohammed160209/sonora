@@ -56,7 +56,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Replay listening history in chronological order from the selected song and then continue the existing queue. Queue and History menus lift the selected song with a solid preview background.
 - Verify complete, playable audio before marking iPhone downloads as ready, recover transfers that finished during app relaunch, and retry temporary transfer failures with fresh links.
-- Keep timed lyrics evenly inset and scale the space between lines with the selected text size.
+- Keep timed lyrics evenly inset and scale the space between lines with the selected text size. Find more Apple catalog lyrics when album editions differ, and preserve punctuation in Japanese and mixed-language lines.
 
 - The iPhone lyrics player skips redrawing unchanged rows as the song advances.
 

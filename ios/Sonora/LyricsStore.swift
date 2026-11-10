@@ -40,7 +40,7 @@ final class LyricsStore {
             let sidecar = await self.files.sidecar(identity)
             guard self.generation == generation, !Task.isCancelled else { return }
             if let cached { self.apply(cached); self.usingSaved = true; self.isLoading = false }
-            if savedOnly || NetworkAccess.shared.isOffline {
+            if savedOnly || downloaded != nil || NetworkAccess.shared.isOffline {
                 if sources?.contains("Local") != false, let sidecar, let parsed = try? await NativeProvider.parseLyrics(sidecar.text, format: sidecar.format), self.generation == generation {
                     self.apply(parsed)
                     self.usingSaved = true

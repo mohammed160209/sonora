@@ -23,7 +23,7 @@ struct ListeningSessionView: View {
                         Label("ios-session-share-code", systemImage: "square.and.arrow.up")
                     }
                     if session.busy { ProgressView("ios-session-reconnecting") }
-                    Button(session.hosting ? "ios-session-end" : "ios-session-leave", role: .destructive) {
+                    Button(LocalizedStringKey(session.hosting ? "ios-session-end" : "ios-session-leave"), role: .destructive) {
                         session.leave()
                     }
                 }

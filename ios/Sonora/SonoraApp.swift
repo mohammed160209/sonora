@@ -54,12 +54,15 @@ struct SonoraApp: App {
                     appearance.updateArtwork(settings.accent == .artwork ? playback.current?.displayArtworkURL : nil)
                 }
                 .onChange(of: downloads.isOffline, initial: true) { _, offline in
-                    if offline { listening.leave() }
+                    listening.connectivityChanged(offline: offline, manual: downloads.offlineMode)
                     playback.connectivityChanged()
                     poTokenMinter.connectivityChanged()
                     if !offline { downloads.resumeQueue(); account.retryRestore(); catalog.loadHome(force: true) }
                 }
                 .onChange(of: account.revision) { _, _ in listening.leave() }
+                .onChange(of: downloads.offlineMode) { _, manual in
+                    if manual { listening.connectivityChanged(offline: true, manual: true) }
+                }
                 .onChange(of: settings.lyricsSources) { _, _ in downloads.resumeQueue() }
                 .onChange(of: settings.audioConfigurationKey, initial: true) { _, _ in playback.applyAudioGain() }
                 .onChange(of: playback.current?.displayArtworkURL, initial: true) { _, url in

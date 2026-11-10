@@ -173,12 +173,17 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
             let tasks = await self.session.allTasks
             guard self.error == nil else { self.isRestoring = false; return }
             let active = Set(tasks.map(\.taskIdentifier))
-            for index in self.entries.indices {
+            for entry in self.entries {
+                guard let index = self.entries.firstIndex(where: { $0.filename == entry.filename }) else { continue }
                 switch self.entries[index].state {
                 case .downloaded:
-                    let url = Self.root.appendingPathComponent(self.entries[index].filename)
-                    if !FileManager.default.fileExists(atPath: url.path) { self.entries[index].state = .failed }
-                    else if self.entries[index].lyricsState == .saved && !FileManager.default.fileExists(
+                    let url = Self.root.appendingPathComponent(entry.filename)
+                    if !Self.hasCompleteAudio(url, expected: self.entries[index].expectedBytes) {
+                        self.entries[index].state = .queued
+                        self.entries[index].progress = 0
+                        try? FileManager.default.removeItem(at: url)
+                    }
+                    if self.entries[index].lyricsState == .saved && !FileManager.default.fileExists(
                         atPath: url.deletingPathExtension().appendingPathExtension("lyrics.json").path) {
                         self.entries[index].lyricsState = .queued
                     }
@@ -189,17 +194,20 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
                 case .resolving, .queued:
                     self.entries[index].state = .queued
                 case .downloading:
-                    let entry = self.entries[index]
-                    guard !active.contains(entry.taskID ?? -1) else { continue }
-                    let url = Self.root.appendingPathComponent(entry.filename)
-                    let valid = (try? await Self.validateAudio(url, expected: entry.expectedBytes)) == true
+                    let interrupted = self.entries[index]
+                    guard !active.contains(interrupted.taskID ?? -1) else { continue }
+                    let url = Self.root.appendingPathComponent(interrupted.filename)
+                    let valid = (try? await Self.validateAudio(url, expected: interrupted.expectedBytes)) == true
                     guard let current = self.entries.firstIndex(where: {
-                        $0.filename == entry.filename && $0.taskID == entry.taskID && $0.state == .downloading
+                        $0.filename == interrupted.filename && $0.taskID == interrupted.taskID && $0.state == .downloading
                     }) else { continue }
                     self.entries[current].state = valid ? .downloaded : .queued
                     self.entries[current].progress = valid ? 1 : 0
                     self.entries[current].taskID = nil
-                    if !valid { try? FileManager.default.removeItem(at: url) }
+                    if !valid {
+                        try? FileManager.default.removeItem(at: url)
+                        self.resetDownloadFiles(at: current)
+                    }
                 case .failed: break
                 }
             }
@@ -218,7 +226,7 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
     func fileURL(for id: String) -> URL? {
         guard let entry = entry(for: id), entry.state == .downloaded else { return nil }
         let url = Self.root.appendingPathComponent(entry.filename)
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        return Self.hasCompleteAudio(url, expected: entry.expectedBytes) ? url : nil
     }
 
     func enqueue(_ track: MusicTrack) {
@@ -266,10 +274,7 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
         guard let index = entries.firstIndex(where: { $0.id == id }), entries[index].state == .failed else { return }
         let previous = Self.root.appendingPathComponent(entries[index].filename)
         try? FileManager.default.removeItem(at: previous)
-        removeLyricsFiles(previous)
-        entries[index].artworkState = .queued
-        entries[index].lyricsState = .queued; entries[index].lyricsSources = nil
-        entries[index].filename = UUID().uuidString + ".m4a"
+        resetDownloadFiles(at: index)
         entries[index].state = .queued
         entries[index].progress = 0
         entries[index].taskID = nil
@@ -317,6 +322,16 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
             await ArtworkFiles.shared.removeDownloaded(audioURL: audioURL)
             self?.lyricCleanup[filename] = nil
         }
+    }
+
+    /// Give a new transfer its own destination and requeue companions tied to the old file.
+    private func resetDownloadFiles(at index: Int) {
+        removeLyricsFiles(Self.root.appendingPathComponent(entries[index].filename))
+        entries[index].filename = UUID().uuidString + ".m4a"
+        entries[index].expectedBytes = nil
+        entries[index].artworkState = .queued
+        entries[index].lyricsState = .queued
+        entries[index].lyricsSources = nil
     }
 
     /// Isolates saved provider data when an account signs in or out, or when the listener clears all downloads.
@@ -615,6 +630,8 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
                 self.entries[index].state = .downloading
                 self.resolving.removeValue(forKey: entry.id)
                 guard self.persist() else {
+                    self.entries[index].state = .queued
+                    self.entries[index].taskID = nil
                     self.transfers.removeValue(forKey: transfer.taskIdentifier)
                     transfer.cancel()
                     return
@@ -656,6 +673,7 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
         let retry = retryable && retries < 2
         entries[index].state = waitingForConnection || retry ? .queued : .failed
         if retry && !waitingForConnection { entries[index].transferRetries = retries + 1 }
+        if entries[index].state == .queued { resetDownloadFiles(at: index) }
         entries[index].progress = 0
         entries[index].taskID = nil
         entries[index].failureCode = entries[index].state == .queued ? nil : reason
@@ -665,10 +683,14 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
         pump()
     }
 
+    private static func hasCompleteAudio(_ url: URL, expected: UInt64?) -> Bool {
+        guard let bytes = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, bytes > 0 else { return false }
+        return expected == nil || UInt64(bytes) == expected
+    }
+
     /// Confirm the complete payload contains a usable audio timeline before exposing it offline.
     private static func validateAudio(_ url: URL, expected: UInt64?) async throws -> Bool {
-        let bytes = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        guard bytes > 0, expected == nil || UInt64(bytes) == expected else { return false }
+        guard hasCompleteAudio(url, expected: expected) else { return false }
         let asset = AVURLAsset(url: url)
         let (playable, duration) = try await asset.load(.isPlayable, .duration)
         guard playable, duration.seconds.isFinite, duration.seconds > 0 else { return false }
@@ -679,7 +701,9 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
     private func finalize(_ taskID: Int, url: URL?, failure: String?) async {
         defer { DownloadEvents.shared.end() }
         guard let index = entries.firstIndex(where: { $0.taskID == taskID }), let url else {
-            if let url { try? FileManager.default.removeItem(at: url) }
+            if let url, !entries.contains(where: { $0.filename == url.lastPathComponent }) {
+                try? FileManager.default.removeItem(at: url)
+            }
             failed(taskID, reason: failure ?? "transfer_failed")
             return
         }
@@ -691,16 +715,17 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
                 failed(taskID, reason: "size_mismatch")
                 return
             }
-            guard try await Self.validateAudio(url, expected: entries[index].expectedBytes) else {
-                try? FileManager.default.removeItem(at: url)
-                failed(taskID, reason: "unplayable")
-                return
-            }
+            let valid = try await Self.validateAudio(url, expected: entries[index].expectedBytes)
             // Awaiting metadata can race removal. Never resurrect a transfer the listener removed.
             guard let current = entries.firstIndex(where: { $0.filename == filename && $0.taskID == taskID }) else {
                 if !entries.contains(where: { $0.filename == filename && $0.state == .downloaded }) {
                     try? FileManager.default.removeItem(at: url)
                 }
+                return
+            }
+            guard valid else {
+                try? FileManager.default.removeItem(at: url)
+                failed(taskID, reason: "unplayable")
                 return
             }
             entries[current].state = .downloaded
@@ -713,7 +738,9 @@ final class DownloadsStore: NSObject, URLSessionDownloadDelegate {
             transfers.removeValue(forKey: taskID)
             pump()
         } catch {
-            try? FileManager.default.removeItem(at: url)
+            if !entries.contains(where: { $0.filename == filename && $0.state == .downloaded }) {
+                try? FileManager.default.removeItem(at: url)
+            }
             failed(taskID, reason: "file_\((error as NSError).code)")
         }
     }

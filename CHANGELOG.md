@@ -65,6 +65,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The iPhone lyrics player skips redrawing unchanged rows as the song advances.
 
 - Player artwork settles into the mini-player over the remaining dismissal motion, with a curved path and gradual resizing instead of a fast final jump. The Available offline badge centers between the visible time labels and play/pause button.
+- Dismiss the full-screen player at a more responsive speed while keeping its smooth cover curve, and keep widget controls grouped close to the song details.
 
 - Switching offline with a paused queue no longer raises a playback-attempt alert. Opening the player waits for an existing alert or sheet to finish closing.
 

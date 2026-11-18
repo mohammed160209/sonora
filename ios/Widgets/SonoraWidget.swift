@@ -17,6 +17,20 @@ private struct PlaybackTimeline: TimelineProvider {
     }
 }
 
+/// Compact measurements keep transport controls grouped at every widget size.
+private enum WidgetMetrics {
+    static let smallPadding: CGFloat = 8
+    static let standardPadding: CGFloat = 14
+    static let smallArtwork: CGFloat = 48
+    static let mediumArtwork: CGFloat = 68
+    static let controlTarget: CGFloat = 44
+    static let smallControlSpacing: CGFloat = 8
+    static let standardControlSpacing: CGFloat = 12
+    static let smallCornerRadius: CGFloat = 9
+    static let standardCornerRadius: CGFloat = 14
+    static let metadataSpacing: CGFloat = 2
+}
+
 /// Small, medium and large Home Screen widgets share the same three audio controls.
 @main struct SonoraWidget: Widget {
     var body: some WidgetConfiguration {
@@ -38,13 +52,13 @@ private struct PlaybackWidgetView: View {
         Group {
             switch family {
             case .systemMedium:
-                HStack(spacing: 14) {
-                    cover.aspectRatio(1, contentMode: .fit)
-                    VStack(alignment: .leading, spacing: 6) { metadata; controls }
+                HStack(spacing: WidgetMetrics.standardControlSpacing) {
+                    cover.frame(width: WidgetMetrics.mediumArtwork, height: WidgetMetrics.mediumArtwork)
+                    VStack(alignment: .leading, spacing: 7) { metadata; controls }
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             case .systemLarge:
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 9) {
                     GeometryReader { geometry in
                         let side = min(geometry.size.width, geometry.size.height)
                         cover.frame(width: side, height: side).frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -53,18 +67,17 @@ private struct PlaybackWidgetView: View {
                     controls
                 }
             default:
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack {
-                        cover.frame(width: 40, height: 40)
-                        Spacer()
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        cover.frame(width: WidgetMetrics.smallArtwork, height: WidgetMetrics.smallArtwork)
+                        metadata.frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Spacer(minLength: 0)
-                    metadata
                     controls
                 }
             }
         }
-        .padding(family == .systemSmall ? 9 : 14)
+        .padding(family == .systemSmall ? WidgetMetrics.smallPadding : WidgetMetrics.standardPadding)
         .widgetURL(URL(string: "sonora://nowplaying"))
         .containerBackground(for: .widget) {
             LinearGradient(colors: [Color.accentColor.opacity(0.24), Color(uiColor: .secondarySystemBackground)],
@@ -73,7 +86,7 @@ private struct PlaybackWidgetView: View {
     }
 
     private var metadata: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(alignment: .leading, spacing: WidgetMetrics.metadataSpacing) {
             if let playback {
                 Text(playback.title).font(family == .systemLarge ? .title3 : .subheadline).fontWeight(.semibold).lineLimit(1)
                 Text(playback.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -94,17 +107,20 @@ private struct PlaybackWidgetView: View {
                     Image(systemName: "music.note").font(.title2.weight(.medium)).foregroundStyle(.secondary)
                 }
             }
-            .clipShape(.rect(cornerRadius: family == .systemSmall ? 8 : 14))
+            .clipShape(.rect(cornerRadius: family == .systemSmall
+                ? WidgetMetrics.smallCornerRadius : WidgetMetrics.standardCornerRadius))
             .accessibilityHidden(true)
     }
 
     private var controls: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: family == .systemSmall
+            ? WidgetMetrics.smallControlSpacing : WidgetMetrics.standardControlSpacing) {
             control(.previous, symbol: "backward.fill", label: "ios-previous")
             control(.toggle, symbol: playback?.playing == true ? "pause.fill" : "play.fill",
                 label: playback?.playing == true ? "ios-pause" : "ios-play")
             control(.next, symbol: "forward.fill", label: "ios-next")
         }
+        .frame(maxWidth: .infinity, alignment: family == .systemMedium ? .leading : .center)
         .disabled(playback == nil)
     }
 
@@ -112,7 +128,7 @@ private struct PlaybackWidgetView: View {
         Button(intent: WidgetTransportIntent(action)) {
             Image(systemName: symbol)
                 .font(.system(size: action == .toggle ? 19 : 15, weight: .semibold))
-                .frame(maxWidth: .infinity, minHeight: 44)
+                .frame(width: WidgetMetrics.controlTarget, height: WidgetMetrics.controlTarget)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

@@ -214,7 +214,7 @@ def review_interactions_only(udid, container):
     assert json.loads((OUTPUT / "offline-artwork-restore-review.json").read_text())["passed"], "Offline relaunch did not decode saved artwork"
     handoffs = json.loads((OUTPUT / "player-cover-handoff-review.json").read_text())
     closing = [event for event in handoffs if event["event"] == "handoff" and not event["opening"]]
-    assert closing and all(event["afterRelease"] and event["sharedPanelProgress"] and event["settleDuration"] >= 0.60 for event in closing), "Cover did not share the committed panel settling motion"
+    assert closing and all(event["afterRelease"] and event["sharedPanelProgress"] and 0.48 <= event["settleDuration"] <= 0.64 for event in closing), "Cover did not share the committed panel settling motion"
     motions = json.loads((OUTPUT / "player-cover-motion-review.json").read_text())
     settled = [event for event in motions if not event["opening"] and event["completed"]]
     assert len(settled) >= 2, "Missing artwork/empty-space dismissal motion evidence"
